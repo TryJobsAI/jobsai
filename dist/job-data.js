@@ -1,0 +1,21 @@
+// Fictional preview records. No employer connection or live hiring claim.
+window.JobsAIData=(()=>{
+const roles=[
+ {id:'studio',title:'Product designer',company:'Example Studio',location:'Remote',mode:'remote',fit:83,letter:'a',met:['Product design','Figma','User research','Prototyping'],missing:['B2B SaaS','Design systems at scale'],summary:'Shape a product from early discovery to a clear, usable experience.'},
+ {id:'labs',title:'UX researcher',company:'Demo Labs',location:'Hybrid · London',mode:'hybrid',fit:75,letter:'d',met:['User research','Interview planning','Synthesis'],missing:['Quantitative studies'],summary:'Turn customer conversations into practical product decisions.'},
+ {id:'sample',title:'Product design lead',company:'Sample Co.',location:'Remote',mode:'remote',fit:67,letter:'s',met:['Product design','Prototyping','Stakeholder collaboration','User research'],missing:['People management','Hiring experience'],summary:'Guide a small design practice and work closely with product partners.'},
+ {id:'north',title:'Interaction designer',company:'Fictional North',location:'Hybrid · Manchester',mode:'hybrid',fit:86,letter:'n',met:['Interaction design','Figma','Prototyping','User research','Product design','Collaboration'],missing:['Motion design'],summary:'Design thoughtful interaction patterns for everyday workflows.'}
+];
+const extras={
+ studio:{ats:'Greenhouse',type:'Full-time',level:'Mid-level',sector:'Product software',about:'An example team building tools that make everyday work easier.',responsibilities:['Turn discovery findings into product concepts and testable prototypes.','Work with engineering and product partners through delivery.','Explain design decisions and improve the experience using feedback.'],benefits:['Flexible working example','Learning time example','Collaborative design reviews']},
+ labs:{ats:'Lever',type:'Full-time',level:'Mid-level',sector:'Research & technology',about:'A fictional research-led team exploring how people use digital products.',responsibilities:['Plan and facilitate qualitative research with clear questions.','Synthesize interviews into useful evidence and recommendations.','Help product teams choose the next question worth investigating.'],benefits:['Hybrid working example','Research community example','Learning budget example']},
+ sample:{ats:'Ashby',type:'Full-time',level:'Lead',sector:'Business software',about:'A sample company growing a small, collaborative product design practice.',responsibilities:['Set design direction with product and engineering leads.','Coach a small team and support clear design critiques.','Shape an inclusive process from research to shipping.'],benefits:['Remote working example','Leadership development example','Flexible hours example']},
+ north:{ats:'Greenhouse',type:'Contract',level:'Mid-level',sector:'Digital services',about:'An illustrative studio making complex workflows feel more approachable.',responsibilities:['Prototype interaction patterns for complex product workflows.','Work with engineers on accessible states and transitions.','Use research and usability feedback to refine the experience.'],benefits:['Hybrid working example','Project ownership example','Cross-disciplinary collaboration']}
+};
+roles.forEach(r=>Object.assign(r,extras[r.id],{salary:null,officialUrl:null,sourceId:null,closed:false,preview:true}));
+const stages=['Saved','Applied','Interview','Offer'];
+const load=()=>{let raw;try{raw=JSON.parse(localStorage.getItem('jobsai-demo-v1')||'null');}catch{}const s={applications:{studio:'Interview',labs:'Applied'},notes:{},jobs:{}};if(raw&&typeof raw==='object'){if(raw.applications&&typeof raw.applications==='object'){s.applications={};roles.forEach(r=>{if(stages.includes(raw.applications[r.id]))s.applications[r.id]=raw.applications[r.id];});}roles.forEach(r=>{if(typeof raw.notes?.[r.id]==='string')s.notes[r.id]=raw.notes[r.id].slice(0,1000);});if(raw.jobs&&typeof raw.jobs==='object')s.jobs=raw.jobs;}return s;};
+const persist=s=>{try{localStorage.setItem('jobsai-demo-v1',JSON.stringify(s));return true;}catch{return false;}};
+const toggle=id=>{const s=load();if(!roles.some(r=>r.id===id))return s;if(s.applications[id]){delete s.applications[id];delete s.notes[id];}else s.applications[id]='Saved';persist(s);return s;};
+return {roles,stages,load,persist,toggle};
+})();

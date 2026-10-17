@@ -1,0 +1,10 @@
+.DS_Store
+
+# Project documentation and validation artifacts
+ASSETS-AND-REFERENCES.txt
+QA-REPORT.txt
+START-HERE.txt
+public/README.txt
+technical-docs/
+licenses/
+validation/

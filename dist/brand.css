@@ -1,0 +1,40 @@
+/* Approved JobsAI palette: electric blue, warm white, charcoal outline. */
+:root{--blue:#0061fe;--blue-dark:#004dcc;--green:#0061fe;--paper:#fffdfa;--outline:#212833;--brand-tint:#e6efff}
+.brand{color:var(--blue)}
+.green{color:var(--blue)}
+.green-card{background:#dce9ff}.green-card .eyebrow{color:#273a5f}.green-card .big-mark{color:#0061fe25}
+.lavender-card{background:#edf3ff}.lavender-card .eyebrow{color:#4b6289}
+.match-score{background:#e5efff;color:#0055df;border:1px solid #0061fe30}
+.company-avatar{background:#e3edff;color:#0061fe;border:1.5px solid #212833}
+.fact.good{background:#eaf2ff;color:#174989}.fact.flagged{background:#f2eee6;color:#53555a}
+.career-card{border:1.5px solid #21283335}.career-card .card-art{stroke:#212833;color:#0061fe}
+.jobs-grid{gap:24px;perspective:1000px}
+.job-card{position:relative;isolation:isolate;background:#fffdfa;border:2px solid #212833;border-radius:25px;min-height:420px;padding:28px 28px 0;box-shadow:4px 5px 0 #212833;transform:translate(0,0);transition:transform .25s var(--ease),box-shadow .25s var(--ease),border-color .2s;--mb-x:-999px;--mb-y:-999px;--mb-near:0;--mb-hot:0;--mb-wa:0;--mb-wr:0px;--mb-wx:-999px;--mb-wy:-999px}
+.job-card:nth-child(1){background:#0061fe;color:#fffdfa}
+.job-card:nth-child(3),.job-card:nth-child(6){background:#e6efff}
+.job-card:nth-child(1) .job-number,.job-card:nth-child(1) .job-number>span{color:#fffdfa}
+.job-card .job-number{color:#626a76;font-size:11px;letter-spacing:.1em}
+.job-card .job-number>span{width:31px;height:31px;border:1.5px solid currentColor;border-radius:50%;display:grid;place-items:center;font-size:22px;line-height:1;transition:transform .25s}
+.job-card h3{font-size:29px;line-height:1.1;letter-spacing:-.045em;z-index:2}
+.job-card>p{font-size:15px;line-height:1.5;z-index:2}
+.job-card .mini-scene{height:200px;min-height:200px;margin-top:auto;padding-top:24px;color:#212833;z-index:2}
+.job-card .mini-sheet,.job-card .speech,.job-card .spreadsheet,.job-card .product-tag{border:2px solid #212833;box-shadow:3px 4px 0 #212833;padding-bottom:18px}
+.job-card .mini-sheet{width:84%;transform:rotate(-4deg)}
+.job-card .mini-sheet>b{color:#0061fe}
+.job-card .round-stamp{background:#fffdfa;border:2px solid #212833;color:#0061fe;box-shadow:2px 3px 0 #212833}
+.job-card .speech-one{background:#fffdfa}.job-card .speech-two{background:#0061fe;color:#fffdfa}.job-card .speech-three{background:#e6efff}
+.job-card .spreadsheet{padding:0;background:#fffdfa;transform:rotate(-3deg)}
+.job-card .spreadsheet>div{border-color:#21283325}.job-card .spreadsheet>div:nth-child(-n+3){background:#0061fe;color:white}
+.job-card .scene-label{border:1.5px solid #212833;box-shadow:2px 2px 0 #212833;background:#fffdfa;color:#0055df}
+.job-card .bar{background:#0061fe;border:1.5px solid #212833;border-bottom:0}.job-card .bar:nth-child(even){background:#c9ddff}
+.job-card .product-dot{background:#0061fe;border:2px solid #212833}.job-card .product-dot:before{border-color:#212833}
+.job-card .tag-line{background:#21283322}.job-card .custom-scene>span:first-child{color:#0061fe;-webkit-text-stroke:2px #212833}
+.job-card .mb-light{position:absolute;inset:0;z-index:0;pointer-events:none;border-radius:inherit;background:radial-gradient(350px circle at var(--mb-x) var(--mb-y),rgba(0,97,254,calc(.12 * var(--mb-hot))),transparent 75%)}
+.job-card:nth-child(1) .mb-light{background:radial-gradient(300px circle at var(--mb-x) var(--mb-y),rgba(255,255,255,calc(.2 * var(--mb-hot))),transparent 75%)}
+.job-card .mb-border{position:absolute;inset:0;z-index:4;border-radius:inherit;pointer-events:none;padding:2px;background:radial-gradient(220px circle at var(--mb-x) var(--mb-y),rgba(0,97,254,var(--mb-near)),transparent 80%),radial-gradient(circle at var(--mb-wx) var(--mb-wy),transparent calc(var(--mb-wr) - 45px),rgba(0,97,254,var(--mb-wa)) calc(var(--mb-wr) - 4px),transparent var(--mb-wr));mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
+.job-card:focus-visible{outline:3px solid #0061fe;outline-offset:5px}
+.job-card:active{transform:translate(3px,4px);box-shadow:1px 1px 0 #212833}
+@media(hover:hover) and (pointer:fine){.job-card:hover{border-color:#212833;transform:translate(-3px,-4px);box-shadow:7px 9px 0 #212833}.job-card:hover .job-number>span{transform:rotate(40deg)}.job-card:hover .mini-sheet{transform:translateY(-8px) rotate(0)}.job-card:hover .speech-one{transform:translateY(-4px) rotate(-3deg)}.job-card:hover .speech-three{transform:translateY(-3px) rotate(0)}.job-card .speech,.job-card .spreadsheet,.job-card .product-tag{transition:transform .35s var(--ease)}.job-card:hover .spreadsheet{transform:rotate(0) translateY(-4px)}.job-card:hover .product-tag{transform:rotate(0) translateY(-6px)}}
+@media(max-width:680px){.jobs-grid{grid-template-columns:1fr;gap:24px;max-width:440px;margin:auto}.job-card{min-height:385px;padding:26px 25px 0}.job-card h3{font-size:29px}.job-card>p{font-size:15px;max-width:310px}.job-card .mini-scene{height:190px;min-height:190px;max-width:320px;align-self:center}.job-card .mini-sheet{padding:20px}.job-card .mini-sheet strong{font-size:17px}.job-card .mini-sheet>b{font-size:11px}.job-card .round-stamp{width:50px;height:50px;font-size:26px;right:0}.job-card .speech{font-size:23px;padding:12px 18px}.job-card .speech-three{font-size:21px}.job-card .spreadsheet{font-size:10px}.job-card .spreadsheet>div{padding:10px}.job-card .scene-label{font-size:10px;padding:8px 11px}.job-card .product-tag{padding:22px}.job-card .product-tag strong{font-size:16px}.job-card .product-tag p{font-size:11px}.job-card .product-dot{width:44px;height:60px;margin-right:15px}.job-card .product-dot:before{width:22px;left:8px;top:-10px;height:18px}.job-card .custom-scene>span:first-child{font-size:145px}}
+.motion-paused .job-card:hover,.motion-paused .job-card:hover .mini-scene>*{transform:none}
+@media(prefers-reduced-motion:reduce){.job-card,.job-card:hover,.job-card:hover .mini-scene>*{transform:none!important}.mb-light,.mb-border{display:none}}
