@@ -4,7 +4,7 @@ import {execFileSync} from 'node:child_process';
 const root=resolve('dist');let checked=0;const errors=[];
 async function walk(dir){const out=[];for(const e of await readdir(dir,{withFileTypes:true})){const p=resolve(dir,e.name);if(e.isDirectory())out.push(...await walk(p));else out.push(p);}return out;}
 for(const file of await walk(root)){
- if(file.endsWith('.js')){execFileSync(process.execPath,['--check',file]);const code=await readFile(file,'utf8');if(/innerHTML|eval\(|new Function|fetch\(|XMLHttpRequest|document\.write/.test(code))errors.push(`Review dynamic content/network surface in ${file}`);}
+ if(file.endsWith('.js')){const code=await readFile(file,'utf8');if(typeof Bun!=='undefined')new Bun.Transpiler({loader:'js'}).transformSync(code);else execFileSync(process.execPath,['--check',file]);if(/innerHTML|eval\(|new Function|fetch\(|XMLHttpRequest|document\.write/.test(code))errors.push(`Review dynamic content/network surface in ${file}`);}
  if(!file.endsWith('.html'))continue;
  const source=await readFile(file,'utf8');
  for(const m of source.matchAll(/(?:src|href|poster)="([^"]+)"/g)){
