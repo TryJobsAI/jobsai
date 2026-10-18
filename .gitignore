@@ -8,3 +8,9 @@ public/README.txt
 technical-docs/
 licenses/
 validation/
+
+# Backend local configuration and dependencies
+backend/.env
+backend/node_modules/
+backend/bun.lockb
+backend/README.md
