@@ -12,7 +12,7 @@ SOURCE_BRANCH = "main"
 PUBLIC_BRANCH = "public-main"
 PUBLIC_REMOTE = "public-origin"
 PUBLIC_NAME = "JobsAI"
-PUBLIC_EMAIL = "jobsai@users.noreply.github.com"
+PUBLIC_EMAIL = "tryjobsai@atomicmail.io"
 
 
 def run(*args: str, input_data: bytes | None = None) -> bytes:
