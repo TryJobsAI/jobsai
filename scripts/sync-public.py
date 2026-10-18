@@ -6,6 +6,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+import os
 
 SOURCE_BRANCH = "main"
 PUBLIC_BRANCH = "public-main"
@@ -15,11 +16,18 @@ PUBLIC_EMAIL = "jobsai@users.noreply.github.com"
 
 
 def run(*args: str, input_data: bytes | None = None) -> bytes:
+    command = list(args)
+    if len(command) > 1 and command[1] == "push":
+        command[1:1] = ["-c", "credential.helper=", "-c", "core.askPass=", "-c", "credential.interactive=never"]
+    environment = os.environ.copy()
+    environment["GIT_TERMINAL_PROMPT"] = "0"
+    environment["GCM_INTERACTIVE"] = "never"
     completed = subprocess.run(
-        args,
+        command,
         input=input_data,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=environment,
     )
     if completed.returncode:
         sys.stderr.buffer.write(completed.stderr)
