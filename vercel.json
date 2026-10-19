@@ -6,5 +6,6 @@
     "api/jobsai/[...path].js": {
       "maxDuration": 30
     }
-  }
+  },
+  "bunVersion": "1.x"
 }
