@@ -62,7 +62,6 @@ function WorkspaceContext() {
   const { disconnectAsync } = useDisconnect();
   const [session, setSession] = useState(readSession);
   const header = document.getElementById('wallet-header-root');
-  const profile = document.getElementById('wallet-profile-root');
   const jobsRoot = document.getElementById('live-jobs-root');
 
   useEffect(() => {
@@ -82,11 +81,9 @@ function WorkspaceContext() {
     goToAuth();
   }
 
-  if (!header || !profile || !jobsRoot || !session?.token) return null;
-  const short = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : 'Wallet';
+  if (!header || !jobsRoot || !session?.token) return null;
   return <>
     {createPortal(<><ConnectButton.Custom>{({ account, openAccountModal, mounted }) => <button className="workspace-account-button" onClick={openAccountModal} disabled={!mounted || !account} aria-label={`Connected wallet ${account?.displayName || ''}`}><span className="workspace-account-status" />{account?.displayName || 'Connected wallet'}</button>}</ConnectButton.Custom><button className="workspace-signout" onClick={signOut}>Sign out</button></>, header)}
-    {createPortal(<div className="wallet-profile-summary"><span className="wallet-profile-icon">✓</span><div>Connected wallet<small>{short}</small></div></div>, profile)}
     {createPortal(<FundedJobs session={session} />, jobsRoot)}
   </>;
 }
