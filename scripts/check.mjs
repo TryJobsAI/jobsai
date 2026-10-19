@@ -21,7 +21,7 @@ for(const file of await walk(root)){
 const app=await readFile(resolve(root,'app.js'),'utf8');const workspace=await readFile(resolve(root,'workspace.js'),'utf8');
 for(const [name,code] of [['app',app],['workspace',workspace]])if(/innerHTML|eval\(|new Function|XMLHttpRequest|document\.write/.test(code))errors.push(`Review dynamic content surface in ${name}`);
 const home=await readFile(resolve(root,'index.html'),'utf8');
-for(const phrase of ['Go after the','Pay only after it passes','14-day full refund','Unused credits refunded','not independent of JobsAI'])if(!home.includes(phrase))errors.push(`Missing revised requirement: ${phrase}`);
-if(/Land the job|Pay only when it passes|Skill-proof/.test(home))errors.push('Superseded copy found');
+for(const phrase of ['Funded work on Robinhood Chain','Go to dashboard','Browse funded work','JobsAI does not convert','A dispute locks the job'])if(!home.toLowerCase().includes(phrase.toLowerCase()))errors.push(`Missing live product requirement: ${phrase}`);
+if(/demo|preview|fictional|sample|not connected/i.test(home))errors.push('Demo or preview language found on the landing page');
 if(errors.length){console.error(errors.join('\n'));process.exit(1);}
 console.log(`PASS: JavaScript syntax, ${checked} local asset/route/anchor references, revised copy requirements, and focused client security checks.`);

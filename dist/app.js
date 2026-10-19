@@ -1,59 +1,46 @@
-const $=(s,root=document)=>root.querySelector(s);
-const $$=(s,root=document)=>[...root.querySelectorAll(s)];
-const dialog=$('#info-dialog');
-const make=(tag,text,className)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(className)node.className=className;return node;};
-const info={
-  about:{title:'Your next chapter starts here.',p:['JobsAI is one app with two halves: a career agent to help you find and prepare for opportunities, and agents that complete clearly scoped work tasks.','This is an interactive product preview with fictional career roles and sample task templates. The Work Tasks panel can show real funded jobs and let a wallet claim one. Job creation, funding, work submissions, AI generation, and client reviews are not connected to the site yet.']},
-  availability:{title:'Designed for work, wherever you are.',p:['The career experience is designed around employers’ public job boards and a workspace that works across screen sizes. Geographic and service availability will be confirmed at launch.','Payment options described in the specification remain planned and require provider and regional verification. The career preview does not connect a wallet. In Work Tasks, wallet sign-in is used to claim an existing funded job; the claim itself sends no transaction.']},
-  factlock:{title:'Your story. With the facts intact.',p:['The planned fact lock aligns each generated claim with the experience, education, skills, and links in your profile. If it cannot trace a claim, it removes it or asks you to confirm it.','For example: “Designed an onboarding flow” can match a portfolio project. “Led a team of eight” must be removed if your profile does not support it.','Fact checking can miss subtle overstatements. You review every document, then choose whether to submit it on the employer’s own site.'],link:['See the example workspace','workspace.html']},
-  payment:{title:'A clear finish line. A fair review.',p:['This is the planned payment process, not an active payment service. The job’s plan, price, delivery deadline, and checks are shown before you fund escrow.','JobsAI’s agents produce the delivery. Rule checks and a three-model review evaluate it, then you receive a 72-hour review window. You can accept, request the available redo, or raise an issue. The specification provides for auto-acceptance if the review window expires.','Disagreements go to a reviewer chosen and paid by JobsAI, with a flat fee regardless of the outcome. Reviewers are not independent of JobsAI. Their deadline is 72 hours. If no decision arrives in time, the planned default is a refund. A failed attestation triggers an immediate refund. You can request one free redo within the review window. Cancellation is available before work starts; after it starts, a missed delivery deadline can trigger a refund.','Live escrow contracts, payment providers, refund paths, and review operations require implementation and verification before launch.']},
-  pass:{title:'Career Pass. A little more support.',p:['Planned price: $9 per month. Includes 60 tailored applications per month, unlimited mock interviews, and practice tasks. The limit of 10 tailored applications per day still applies. Cancel within 14 days of the first payment for a full refund; after that, unused full months are refunded at the price paid.','This preview has no subscription or checkout. Explore the sample workspace to see how the features could fit together.'],link:['Explore the demo','workspace.html']},
-  packs:{title:'Five applications. One small pack.',p:['Planned price: $4 for five tailored applications, without a Career Pass. Each document must pass its checks before a credit counts. Unused credits are refundable.','Applications are based on your own facts and remain subject to the 10-per-day limit. You review and submit each one yourself. No purchase is made in this preview.'],link:['Explore sample matches','workspace.html']},
-  custom:{title:'A plan for the task you have in mind.',p:['Custom work is planned for J5. Describe your desired outcome and receive a plan, a fixed quote, a delivery time, and acceptance checks before funding the job.','Recurring jobs are also planned, with both a per-run price cap and an overall cap set by you. The preview currently demonstrates the five launch templates.'],link:['Explore the sample templates','workspace.html?tab=jobs']},
-  privacy:{title:'Privacy in this preview.',p:['Career roles and task templates use sample data. There is no analytics, CV upload, payment collection, or remote AI generation. If you connect a wallet to claim a live funded task, the site creates a JobsAI session and stores its token in this browser tab. Sample tracker choices and motion preference stay in local storage.','Text typed into the interview practice stays in the page and is not sent to a server or saved. You can reset demo data from the workspace.','The planned service encrypts profiles, documents, application notes, and interview notes to your key. Names and contact details are removed before review models or reviewers see the text. A published processor list must explain retention and training terms. Job inputs and outputs are deleted 30 days after settlement; voice sessions are deleted after feedback. If all passkeys and recovery methods are lost, the profile cannot be recovered. Export is planned. These are requirements for the live service, not implemented guarantees in this demo.']},
-  terms:{title:'About using this preview.',p:['This is a design and interaction demonstration. Roles, companies, match scores, tasks, check results, and tracker stages are illustrative. No application is submitted, no work is commissioned, and no payment is taken.','The product specification describes intended capabilities and pricing. Availability and final service terms will be confirmed before launch. JobsAI cannot guarantee interviews, job offers, or error-free work.']},
-  'guide-cv':{title:'A stronger CV starts with real facts.',p:['Start with a short list of projects, responsibilities, tools, and outcomes you can explain. Keep useful numbers only when you can support them.','Read the role’s requirements. Put the most relevant experience first, using concrete examples rather than broad claims. A career change does not require inventing a past job.','Check every sentence before sending. A good draft should sound like you, be easy to read, and stand up to a follow-up question.'],link:['See the fact-lock example','workspace.html']},
-  'guide-checks':{title:'Make “done” something you can check.',p:['Agree on the format, required fields, source material, and scope before work begins. “Make it better” is hard to verify. “Remove duplicate rows and standardise dates without changing totals” gives everyone a clear target.','Separate mechanical checks from judgment. A table can have all its columns and still need a human review of whether the conclusions are useful.','Review the output and its evidence together. Passing the stated checks does not mean that a result is perfect.'],link:['Try a sample delivery','workspace.html?tab=jobs']},
-  'guide-interview':{title:'Practise the work behind the words.',p:['Pick a real project and explain the problem, your own contribution, a decision you made, and the result. Be clear about what your teammates did too.','Prepare questions about the team’s goals and how success in the role is measured. A useful interview helps you assess the fit as well.','Practice is for finding gaps and gaining clarity. You do not need a memorised performance.'],link:['Try a practice question','workspace.html?tab=interviews']}
-};
-function openInfo(key){const entry=info[key];if(!entry)return;$('#dialog-kicker').textContent='GET TO KNOW JOBSAI';$('#dialog-title').textContent=entry.title;const body=$('#dialog-body');body.replaceChildren(...entry.p.map(p=>make('p',p)));const actions=$('#dialog-actions');actions.replaceChildren();if(entry.link){const a=make('a',entry.link[0],'pill primary');a.href=entry.link[1];actions.append(a);}dialog.showModal();}
-$$('[data-info]').forEach(b=>b.addEventListener('click',()=>openInfo(b.dataset.info)));
-$$('[data-start]').forEach(b=>b.addEventListener('click',()=>{
- $('#dialog-kicker').textContent='WELCOME TO JOBSAI';$('#dialog-title').textContent='What’s your next move?';$('#dialog-body').replaceChildren(make('p','Explore the sample career workspace. Connect a wallet only if you choose to claim a live funded task.'));
- const choices=make('div',undefined,'dialog-choices');
- [['Find my next role','Explore matches, a fact-checked application, interview practice, and your tracker.','workspace.html'],['Get a task done','Choose a sample work task and follow its plan, checks, and review.','workspace.html?tab=jobs']].forEach(([title,copy,url])=>{const a=make('a',undefined,'choice-card');a.href=url;a.append(make('strong',title),make('span',copy),make('b','→'));choices.append(a);});
- $('#dialog-body').append(choices);$('#dialog-actions').replaceChildren();dialog.showModal();
-}));
-$$('[data-job]').forEach(b=>b.addEventListener('click',()=>{
- $('#dialog-kicker').textContent='PLANNED LAUNCH TEMPLATE';$('#dialog-title').textContent=b.dataset.job;$('#dialog-body').replaceChildren(make('p','Start with the result you want, the files or source facts, and any format requirements. The live service is planned to show a fixed quote and checks before you fund the work.'),make('p','Explore an illustrative plan and delivery in the demo. No live quote or payment is created.'));
- const a=make('a','Explore this sample job','pill primary');a.href=`workspace.html?tab=jobs&template=${encodeURIComponent(b.dataset.job)}`;$('#dialog-actions').replaceChildren(a);dialog.showModal();
-}));
-$('.dialog-close').addEventListener('click',()=>dialog.close());
-dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
-const navToggles=$$('.nav-toggle');
-function closeNav(){navToggles.forEach(b=>{b.setAttribute('aria-expanded','false');document.getElementById(b.getAttribute('aria-controls')).hidden=true;});}
-navToggles.forEach(b=>b.addEventListener('click',()=>{const open=b.getAttribute('aria-expanded')==='true';closeNav();if(!open){b.setAttribute('aria-expanded','true');document.getElementById(b.getAttribute('aria-controls')).hidden=false;}}));
-document.addEventListener('click',e=>{if(!e.target.closest('.nav-group'))closeNav();});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){const expanded=navToggles.find(b=>b.getAttribute('aria-expanded')==='true');closeNav();if(expanded)expanded.focus();closeMobile();}});
-const menu=$('.menu-button');function closeMobile(){menu.setAttribute('aria-expanded','false');menu.setAttribute('aria-label','Open menu');$('#mobile-nav').hidden=true;}
-menu.addEventListener('click',()=>{const open=menu.getAttribute('aria-expanded')==='true';menu.setAttribute('aria-expanded',String(!open));menu.setAttribute('aria-label',open?'Open menu':'Close menu');$('#mobile-nav').hidden=open;});
-$$('a[href^="#"]').forEach(a=>a.addEventListener('click',()=>{closeNav();closeMobile();}));
-const audienceNotes=['A fresh start, on your terms.','Your skills. A new direction.','More room for your best work.','One less thing on the list.'];
-$$('[data-audience]').forEach(b=>b.addEventListener('click',()=>{$$('[data-audience]').forEach(other=>{const selected=other===b;other.setAttribute('aria-expanded',String(selected));other.lastElementChild.textContent=selected?'−':'+';other.parentElement.classList.toggle('active',selected);document.getElementById(other.getAttribute('aria-controls')).hidden=!selected;});$('#audience-note').textContent=audienceNotes[Number(b.dataset.audience)];}));
-const milestones=[
- ['A strong place to start.','Passkey accounts, your profile vault, public job-board feeds, explained match scores, and an application tracker.',['Your experience in one profile','Employer-source roles and clear matches','A board for every next step']],
- ['Applications that stay true to you.','Fact-locked CVs and cover letters, format checks, and a hand-off to the employer’s application page.',['Every generated claim checked against your facts','Career Pass and application packs','You review and submit; 10 tailored applications a day']],
- ['A clear path from brief to delivery.','Job escrow, a review window, JobsAI-appointed dispute review, refunds, and five launch templates.',['Agree on scope, price, deadline, and checks first','Rule checks and a three-model review','Your review window before settlement']],
- ['Practice with a purpose.','Role-specific mock interviews, starting with text and followed by voice, plus role-relevant practice tasks.',['Company briefs and useful practice questions','Feedback tied to a clear rubric','Practice results show attempts and date; not a certification']],
- ['Help with the work you actually have.','Custom job plans and quotes, plus recurring work with caps you control.',['A plan and a fixed quote for your brief','Per-run and overall spending caps','Checks for every recurring run']],
- ['More ways to connect.','Planned eligible-region payment options and API/MCP access for agents. Integrations require verification before launch.',['Stock Token conversion at checkout, subject to eligibility','USDG settlement and refund requirements','Agent access with x402 into job escrow']]
-];
-const roadTabs=$$('[data-roadmap]');function setRoadmap(index,focus=false){roadTabs.forEach((b,i)=>{b.setAttribute('aria-selected',String(i===index));b.tabIndex=i===index?0:-1;});const [title,description,bullets]=milestones[index];const panel=$('#roadmap-panel');panel.setAttribute('aria-labelledby',`roadmap-tab-${index}`);$('.status-label',panel).textContent=`PLANNED · J${index+1}`;$('h3',panel).textContent=title;$('p',panel).textContent=description;$('ul',panel).replaceChildren(...bullets.map(t=>make('li',t)));if(focus)roadTabs[index].focus();}
-roadTabs.forEach((b,i)=>{b.addEventListener('click',()=>setRoadmap(i));b.addEventListener('keydown',e=>{let n=i;if(e.key==='ArrowRight')n=(i+1)%6;else if(e.key==='ArrowLeft')n=(i+5)%6;else if(e.key==='Home')n=0;else if(e.key==='End')n=5;else return;e.preventDefault();setRoadmap(n,true);});});
-const header=$('.header'),floating=$('.floating-cta');let queued=false;
-function updateScroll(){header.classList.toggle('scrolled',window.scrollY>25);const heroEnd=$('.hero-actions').getBoundingClientRect().bottom;const footerTop=$('.final-cta').getBoundingClientRect().top;floating.classList.toggle('visible',heroEnd<0&&footerTop>window.innerHeight*.8);queued=false;}
-window.addEventListener('scroll',()=>{if(!queued){queued=true;requestAnimationFrame(updateScroll);}},{passive:true});updateScroll();
-let paused=false;try{paused=localStorage.getItem('jobsai-motion')==='paused';}catch{}
-const motionButton=$('#motion-toggle');function syncMotion(){document.body.classList.toggle('motion-paused',paused);motionButton.setAttribute('aria-pressed',String(paused));motionButton.textContent=paused?'Resume motion':'Pause motion';document.dispatchEvent(new Event('jobsai:motion'));}
-motionButton.addEventListener('click',()=>{paused=!paused;try{localStorage.setItem('jobsai-motion',paused?'paused':'active');}catch{}syncMotion();});syncMotion();
-if('IntersectionObserver'in window&&!matchMedia('(prefers-reduced-motion: reduce)').matches&&!paused){document.body.classList.add('js-motion');const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.remove('pending');observer.unobserve(entry.target);}}),{threshold:.06});$$('.section-heading,.feature-row,.career-card,.job-card,.process-card,.resource-card').forEach(el=>{el.classList.add('reveal');if(el.getBoundingClientRect().top>window.innerHeight)el.classList.add('pending');observer.observe(el);});}
+const menu = document.querySelector('.menu-button');
+const mobileNav = document.querySelector('#mobile-nav');
+if (menu && mobileNav) {
+  const closeMenu = () => {
+    menu.setAttribute('aria-expanded', 'false');
+    menu.setAttribute('aria-label', 'Open menu');
+    mobileNav.hidden = true;
+  };
+  menu.addEventListener('click', () => {
+    const open = menu.getAttribute('aria-expanded') === 'true';
+    menu.setAttribute('aria-expanded', String(!open));
+    menu.setAttribute('aria-label', open ? 'Open menu' : 'Close menu');
+    mobileNav.hidden = open;
+  });
+  mobileNav.querySelectorAll('a').forEach(link => link.addEventListener('click', closeMenu));
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeMenu();
+  });
+}
+const header = document.querySelector('.header');
+const floating = document.querySelector('.floating-cta');
+function updateScroll() {
+  header?.classList.toggle('scrolled', window.scrollY > 25);
+  const heroActions = document.querySelector('.hero-actions');
+  const footer = document.querySelector('.footer');
+  if (floating && heroActions && footer) {
+    floating.classList.toggle('visible', heroActions.getBoundingClientRect().bottom < 0 && footer.getBoundingClientRect().top > window.innerHeight * 0.8);
+  }
+}
+window.addEventListener('scroll', updateScroll, { passive: true });
+updateScroll();
+let motionPaused = false;
+try { motionPaused = localStorage.getItem('jobsai-motion') === 'paused'; } catch {}
+const motionButton = document.querySelector('#motion-toggle');
+function syncMotion() {
+  document.body.classList.toggle('motion-paused', motionPaused);
+  motionButton?.setAttribute('aria-pressed', String(motionPaused));
+  if (motionButton) motionButton.textContent = motionPaused ? 'Resume motion' : 'Pause motion';
+  document.dispatchEvent(new Event('jobsai:motion'));
+}
+motionButton?.addEventListener('click', () => {
+  motionPaused = !motionPaused;
+  try { localStorage.setItem('jobsai-motion', motionPaused ? 'paused' : 'active'); } catch {}
+  syncMotion();
+});
+syncMotion();
