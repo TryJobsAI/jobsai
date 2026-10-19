@@ -31,11 +31,12 @@ The website is an interactive product experience, and the backend exposes the co
 ### Website
 
 ```sh
+bun install
 bun run build
 bun run start
 ```
 
-Open the local URL printed by the server. The frontend has no external package dependencies. Its same-origin `/api/jobsai` route forwards requests to the backend at `https://jobsai-api.onrender.com`. Vercel handles this with an external rewrite; the local server uses the same proxy path during development.
+Open the local URL printed by the server. The `/auth.html` entry connects a wallet through RainbowKit, signs the JobsAI login message, and opens the dashboard with that wallet session. The workspace uses RainbowKit and Wagmi on Robinhood Chain. Set `VITE_WALLETCONNECT_PROJECT_ID` in your local environment and Vercel project settings for WalletConnect support. The same-origin `/api/jobsai` route forwards requests to the backend at `https://jobsai-api.onrender.com`. Vercel handles this with an external rewrite; the local server uses the same proxy path during development.
 
 ### Backend
 
