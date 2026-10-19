@@ -27,10 +27,13 @@
   practice?.addEventListener('click', () => {
     const answer = document.querySelector('#practice-answer').value.trim();
     const result = document.querySelector('#practice-result');
-    result.hidden = false;
-    result.replaceChildren();
+    const content = document.querySelector('#practice-result-content');
+    content.replaceChildren();
     if (!answer) {
-      result.textContent = 'Add an answer to review its structure.';
+      const prompt = document.createElement('p');
+      prompt.textContent = 'Add an answer before reviewing its structure.';
+      content.append(prompt);
+      result.showModal();
       return;
     }
     const words = answer.split(/\s+/).length;
@@ -46,8 +49,11 @@
       item.textContent = prompt;
       list.append(item);
     }
-    result.append(summary, list);
+    content.append(summary, list);
+    result.showModal();
   });
+
+  document.querySelector('[data-close-practice]')?.addEventListener('click', () => document.querySelector('#practice-result')?.close());
 
   changeTab(new URLSearchParams(location.search).get('tab') || 'matches', false);
 })();

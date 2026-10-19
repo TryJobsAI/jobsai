@@ -15,26 +15,25 @@ function Auth() {
   const { address, chainId, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const { switchChain } = useSwitchChain();
-  const [status, setStatus] = useState('Connect your wallet to enter JobsAI.');
   const [busy, setBusy] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
+  const [feedback, setFeedback] = useState(null);
   const attemptedAddress = useRef('');
 
   async function authenticate(walletAddress) {
     setBusy(true);
-    setStatus('Requesting secure sign-in…');
+    setFeedback({ title: 'Signing in securely', message: 'Approve the sign-in message in your wallet. This does not send a transaction.', kind: 'loading' });
     try {
       const challenge = await JobsAIAPI.issueNonce(walletAddress);
-      setStatus('Approve the sign-in message in your wallet. This does not send a transaction.');
       const signature = await signMessageAsync({ message: challenge.data.message });
       const response = await JobsAIAPI.verifyWallet({ address: walletAddress, nonce: challenge.data.nonce, signature });
       const session = { token: response.data.token, walletAddress: response.data.walletAddress };
       sessionStorage.setItem(sessionKey, JSON.stringify(session));
-      setStatus('Welcome to JobsAI.');
+      setFeedback(null);
       setTransitioning(true);
     } catch (error) {
       attemptedAddress.current = '';
-      setStatus(error.code === 4001 ? 'Signature cancelled. You can try again when ready.' : error.message || 'Wallet sign-in failed.');
+      setFeedback({ title: error.code === 4001 ? 'Sign-in cancelled' : 'Wallet sign-in failed', message: error.code === 4001 ? 'You can try connecting again when ready.' : error.message || 'Wallet sign-in failed.', kind: 'error' });
     } finally { setBusy(false); }
   }
 
@@ -42,13 +41,12 @@ function Auth() {
     if (!address || !isConnected) return;
     const session = readSession();
     if (session && session.walletAddress.toLowerCase() === address.toLowerCase()) {
-      setStatus('Welcome back.');
       setTransitioning(true);
       return;
     }
     if (session) sessionStorage.removeItem(sessionKey);
     if (chainId !== robinhood.id) {
-      setStatus('Switch to Robinhood Chain to continue.');
+      setFeedback({ title: 'Switch network', message: 'JobsAI wallet sign-in uses Robinhood Chain.', kind: 'error', action: true });
       return;
     }
     if (attemptedAddress.current !== address) {
@@ -70,13 +68,12 @@ function Auth() {
       <h1 id="auth-title">Your work starts here.</h1>
       <p>Connect your wallet to see funded jobs and claim work on Robinhood Chain.</p>
       <div className="jobsai-auth-connect"><ConnectButton accountStatus="address" chainStatus="icon" showBalance={false} /></div>
-      {isConnected && chainId !== robinhood.id && <button className="jobsai-switch" onClick={() => switchChain({ chainId: robinhood.id })}>Switch to Robinhood Chain</button>}
       {isConnected && chainId === robinhood.id && !busy && !transitioning && attemptedAddress.current === '' && <button className="jobsai-claim" onClick={() => { attemptedAddress.current = address || ''; if (address) authenticate(address); }}>Continue to JobsAI</button>}
-      <p className="jobsai-auth-status" role="status" aria-live="polite">{busy ? 'Confirm the message in your wallet…' : status}</p>
       <small>Wallet sign-in uses a message only. It does not move funds.</small>
     </section>
     <footer><a href="index.html">← Back to JobsAI</a><span>Robinhood Chain · ETH and USDG jobs</span></footer>
     {transitioning && <div className="jobsai-landscape-transition" aria-label="Opening your JobsAI dashboard"><div className="jobsai-landscape-sky"><span className="jobsai-landscape-sun"/><span className="jobsai-landscape-mountain mountain-back"/><span className="jobsai-landscape-mountain mountain-front"/><span className="jobsai-landscape-ground"/><span className="jobsai-landscape-path"/></div><strong>Welcome to JobsAI</strong></div>}
+    {feedback && !transitioning && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="auth-modal-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : '!'}</span><h2 id="auth-modal-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && (feedback.action ? <button className="pill primary" onClick={() => { setFeedback(null); switchChain({ chainId: robinhood.id }); }}>Switch to Robinhood Chain</button> : <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>)}</section></div>}
   </main>;
 }
 

@@ -14,44 +14,46 @@ function goToAuth() {
 
 function FundedJobs({ session }) {
   const [jobs, setJobs] = useState([]);
-  const [status, setStatus] = useState('Loading funded jobs…');
   const [busy, setBusy] = useState('');
+  const [feedback, setFeedback] = useState({ title: 'Loading funded jobs', message: 'Checking for currently funded work…', kind: 'loading' });
 
   async function refresh() {
-    setStatus('Checking JobsAI for funded work…');
+    setFeedback({ title: 'Loading funded jobs', message: 'Checking for currently funded work…', kind: 'loading' });
     try {
       const response = await JobsAIAPI.readyJobs();
       const ready = Array.isArray(response?.data) ? response.data : [];
       setJobs(ready);
-      setStatus(ready.length ? `${ready.length} funded ${ready.length === 1 ? 'job is' : 'jobs are'} ready to claim.` : 'No funded jobs are ready to claim right now. Refresh to check again.');
-    } catch (error) { setJobs([]); setStatus(error.message || 'JobsAI could not load funded jobs.'); }
+      setFeedback(null);
+    } catch (error) { setJobs([]); setFeedback({ title: 'Could not load funded jobs', message: error.message || 'JobsAI could not load funded jobs.', kind: 'error' }); }
   }
 
   useEffect(() => { refresh(); }, []);
 
   async function claim(job) {
     setBusy(job.id);
+    setFeedback({ title: 'Claiming job', message: 'Assigning this job to your wallet…', kind: 'loading' });
     try {
       await JobsAIAPI.claim(job.id, session.token);
       setJobs(current => current.filter(item => item.id !== job.id));
-      setStatus('Job claimed. It is now assigned to your wallet.');
-    } catch (error) { setStatus(error.message || 'The job could not be claimed.'); }
+      setFeedback({ title: 'Job claimed', message: 'This job is now assigned to your wallet.', kind: 'success' });
+    } catch (error) { setFeedback({ title: 'Could not claim job', message: error.message || 'The job could not be claimed.', kind: 'error' }); }
     finally { setBusy(''); }
   }
 
   return <>
     <div className="live-jobs-heading">
-      <div><span className="eyebrow">LIVE · FUNDED ON ROBINHOOD CHAIN</span><h2 id="live-jobs-title">Jobs ready to claim</h2><p>Review each funded job, its listed asset, and acceptance criteria before claiming.</p></div>
+      <div><span className="eyebrow">LIVE · FUNDED ONCHAIN</span><h2 id="live-jobs-title">Jobs ready to claim</h2><p>Review each funded job, its listed asset, and acceptance criteria before claiming.</p></div>
       <button className="pill outline" onClick={refresh} disabled={!!busy}>Refresh</button>
     </div>
-    <p className="live-jobs-status" role="status" aria-live="polite">{status}</p>
+    {!jobs.length && !feedback && <div className="live-jobs-empty"><h3>No funded jobs are ready right now.</h3><p>Check back later or refresh to look for new work.</p></div>}
     <div className="live-jobs-list">{jobs.map(job => <article className="live-job-card" key={job.id}>
       <div className="live-job-top"><h3>{job.title}</h3><strong className="live-job-amount">{job.amount} {job.asset}</strong></div>
       <p className="live-job-description">{job.description}</p>
       {!!job.acceptanceCriteria?.length && <><h4>Acceptance criteria</h4><ul className="live-job-criteria">{job.acceptanceCriteria.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul></>}
       <p className="live-job-deadline">{job.deadlineAt && !Number.isNaN(new Date(job.deadlineAt).valueOf()) ? `Deadline: ${new Date(job.deadlineAt).toLocaleString()}` : 'No deadline provided'}</p>
-      <button className="pill primary live-job-claim" disabled={!!busy} onClick={() => claim(job)}>{busy === job.id ? 'Claiming…' : 'Claim job'}</button>
+      <button className="pill primary live-job-claim" disabled={!!busy} onClick={() => claim(job)}>Claim job</button>
     </article>)}</div>
+    {feedback && <div className="workspace-overlay" role="presentation"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="workspace-modal-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : '!'}</span><h2 id="workspace-modal-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
   </>;
 }
 
@@ -83,7 +85,7 @@ function WorkspaceContext() {
   if (!header || !profile || !jobsRoot || !session?.token) return null;
   const short = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : 'Wallet';
   return <>
-    {createPortal(<><ConnectButton accountStatus="address" chainStatus="icon" showBalance={false} /><button className="workspace-signout" onClick={signOut}>Sign out</button></>, header)}
+    {createPortal(<><ConnectButton.Custom>{({ account, openAccountModal, mounted }) => <button className="workspace-account-button" onClick={openAccountModal} disabled={!mounted || !account} aria-label={`Connected wallet ${account?.displayName || ''}`}><span className="workspace-account-status" />{account?.displayName || 'Connected wallet'}</button>}</ConnectButton.Custom><button className="workspace-signout" onClick={signOut}>Sign out</button></>, header)}
     {createPortal(<div className="wallet-profile-summary"><span className="wallet-profile-icon">✓</span><div>Connected wallet<small>{short}</small></div></div>, profile)}
     {createPortal(<FundedJobs session={session} />, jobsRoot)}
   </>;
