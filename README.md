@@ -75,7 +75,7 @@ The MVP creates a server-controlled escrow wallet for each job, stores encrypted
 
 ## Backend container
 
-The GitHub Actions workflow type-checks the backend and builds its container. On pushes to `main` in the public repository, it publishes:
+The GitHub Actions workflow type-checks the backend and builds its container. On pushes to `main`, it publishes:
 
 ```text
 ghcr.io/tryjobsai/jobsai-backend:latest
@@ -83,13 +83,3 @@ ghcr.io/tryjobsai/jobsai-backend:<commit-sha>
 ```
 
 Provide runtime secrets through the deployment platform; the image does not contain credentials.
-
-## Repository sync
-
-`origin` is the private repository and `public-origin` is the public JobsAI repository. Publish the current `main` branch to both with:
-
-```sh
-bun run push:all
-```
-
-The public sync removes private-only history and rewrites commit identities to `JobsAI <tryjobsai@atomicmail.io>`.
