@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import type { PoolClient } from "pg";
-import { formatUnits, parseUnits } from "viem";
+import { formatUnits } from "viem";
 import { z } from "zod";
 import { requireAuth, requireTeam } from "./auth.js";
 import { config, teamWallets } from "./config.js";
@@ -10,23 +10,11 @@ import { db } from "./db/index.js";
 import { makeEscrowWallet, verifyJobFunding, type FundingTerms, type JobAsset } from "./escrow.js";
 import { ApiError, asyncRoute } from "./http.js";
 import { processSettlement } from "./settlement.js";
+import { createJobInputSchema, parseDeadline, parseJobAmount, submissionInputSchema } from "./job-input.js";
+import { assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertClaimable, assertDisputed, assertJobClient, assertParticipants, assertSettlementAllowed } from "./lifecycle.js";
 
 export const jobsRouter = Router();
 const uuid = z.string().uuid();
-const amountSchema = z.string().regex(/^(?:0|[1-9]\d{0,11})(?:\.\d{1,18})?$/, "Enter a plain decimal amount.");
-const createInput = z.object({
-  title: z.string().trim().min(3).max(160),
-  description: z.string().trim().min(1).max(20_000),
-  acceptanceCriteria: z.array(z.string().trim().min(1).max(500)).min(1).max(20),
-  asset: z.enum(["eth", "usdg"]),
-  amount: amountSchema,
-});
-const submissionInput = z.object({
-  summary: z.string().trim().min(1).max(10_000),
-  deliverable: z.string().trim().min(1).max(100_000),
-  evidence: z.array(z.string().url().max(2_000)).max(20).default([]),
-});
-
 type JobRow = {
   id: string;
   client_id: string;
@@ -97,28 +85,17 @@ async function appendEvent(
   );
 }
 
-function amountRaw(asset: JobAsset, value: string) {
-  try {
-    return parseUnits(value, asset === "eth" ? 18 : config.USDG_DECIMALS);
-  } catch {
-    throw new ApiError(400, "invalid_amount", `The ${asset.toUpperCase()} amount has too many decimal places.`);
-  }
-}
-
 jobsRouter.post(
   "/",
   requireAuth,
   asyncRoute(async (request, response) => {
-    const input = createInput.parse(request.body);
+    const input = createJobInputSchema.parse(request.body);
     if (input.asset === "usdg" && !config.USDG_TOKEN_ADDRESS)
       throw new ApiError(503, "usdg_unconfigured", "USDG jobs are not enabled until USDG_TOKEN_ADDRESS is configured.");
-    const amount = amountRaw(input.asset, input.amount);
-    if (amount <= 0n) throw new ApiError(400, "invalid_amount", "The job amount must be greater than zero.");
+    const amount = parseJobAmount(input.asset, input.amount, config.USDG_DECIMALS);
     const id = randomUUID();
     const escrow = makeEscrowWallet(id);
-    const deadlineAt = request.body?.deadlineAt ? new Date(request.body.deadlineAt) : null;
-    if (deadlineAt && (!Number.isFinite(deadlineAt.getTime()) || deadlineAt <= new Date()))
-      throw new ApiError(400, "invalid_deadline", "deadlineAt must be a valid future date.");
+    const deadlineAt = parseDeadline(request.body?.deadlineAt);
 
     const client = await db.connect();
     try {
@@ -214,8 +191,7 @@ jobsRouter.post(
     );
     if (!job.rowCount) throw new ApiError(404, "job_not_found", "This job does not exist.");
     const terms = job.rows[0];
-    if (terms.client_wallet.toLowerCase() !== request.auth!.walletAddress.toLowerCase())
-      throw new ApiError(403, "client_only", "Only the job client can fund this job.");
+    assertJobClient(terms.client_wallet, request.auth!.walletAddress);
     if (terms.status !== "awaiting_funding") {
       if (terms.status === "ready" && await fundingHashMatches(id, txHash)) {
         response.json({ data: { jobId: id, status: "ready", transactionHash: txHash }, idempotentReplay: true });
@@ -279,11 +255,7 @@ jobsRouter.post(
       );
       const job = locked.rows[0];
       if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
-      if (job.client_id === request.auth!.userId)
-        throw new ApiError(403, "client_cannot_claim", "The client cannot claim their own job.");
-      if (job.status !== "ready") throw new ApiError(409, "job_not_claimable", "This job is no longer ready to claim.");
-      if (job.deadline_at && job.deadline_at <= new Date())
-        throw new ApiError(409, "job_deadline_passed", "This job's deadline has passed.");
+      assertClaimable(job, request.auth!.userId);
       await client.query("UPDATE jobs SET doer_id=$2,status='in_progress',claimed_at=now(),updated_at=now() WHERE id=$1", [
         id,
         request.auth!.userId,
@@ -305,7 +277,7 @@ jobsRouter.post(
   requireAuth,
   asyncRoute(async (request, response) => {
     const id = uuid.parse(request.params.id);
-    const input = submissionInput.parse(request.body);
+    const input = submissionInputSchema.parse(request.body);
     const client = await db.connect();
     try {
       await client.query("BEGIN");
@@ -315,10 +287,7 @@ jobsRouter.post(
       );
       const job = selected.rows[0];
       if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
-      if (job.doer_id !== request.auth!.userId)
-        throw new ApiError(403, "doer_only", "Only the doer who claimed this job can submit work.");
-      if (!["in_progress", "revision_requested"].includes(job.status))
-        throw new ApiError(409, "job_not_submittable", "This job is not accepting a submission.");
+      assertCanSubmit(job, request.auth!.userId);
       const previous = await client.query<{ revision: number }>(
         "SELECT COALESCE(MAX(revision),0)::int AS revision FROM job_submissions WHERE job_id=$1",
         [id],
@@ -356,8 +325,7 @@ jobsRouter.get(
       [id],
     );
     if (!access.rowCount) throw new ApiError(404, "job_not_found", "This job does not exist.");
-    if (![access.rows[0].client_id, access.rows[0].doer_id].includes(request.auth!.userId))
-      throw new ApiError(403, "job_forbidden", "Only the client and assigned doer can view submissions.");
+    assertParticipants(access.rows[0], request.auth!.userId);
     const rows = await db.query<{
       id: string;
       revision: number;
@@ -389,10 +357,7 @@ jobsRouter.post(
       );
       const job = selected.rows[0];
       if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
-      if (job.client_id !== request.auth!.userId)
-        throw new ApiError(403, "client_only", "Only the client can request changes.");
-      if (job.status !== "submitted" || !job.active_submission_id)
-        throw new ApiError(409, "job_not_reviewable", "Only a submitted job can be sent back for changes.");
+      assertCanRequestRevision(job, request.auth!.userId);
       const previousRevision = await client.query<{ revision: number }>(
         "SELECT revision FROM job_submissions WHERE id=$1",
         [job.active_submission_id],
@@ -423,8 +388,7 @@ jobsRouter.get(
     const id = uuid.parse(request.params.id);
     const access = await db.query<{ client_id: string; doer_id: string | null }>("SELECT client_id,doer_id FROM jobs WHERE id=$1", [id]);
     if (!access.rowCount) throw new ApiError(404, "job_not_found", "This job does not exist.");
-    if (![access.rows[0].client_id, access.rows[0].doer_id].includes(request.auth!.userId))
-      throw new ApiError(403, "job_forbidden", "Only the job participants can view revision requests.");
+    assertParticipants(access.rows[0], request.auth!.userId);
     const rows = await db.query<{ id: string; submission_id: string; feedback_ciphertext: string; feedback_digest: string; created_at: Date; revision: number }>(
       `SELECT r.id,r.submission_id,r.feedback_ciphertext,r.feedback_digest,r.created_at,s.revision
        FROM job_revisions r JOIN job_submissions s ON s.id=r.submission_id WHERE r.job_id=$1 ORDER BY r.created_at`,
@@ -460,10 +424,7 @@ jobsRouter.post(
       );
       const job = selected.rows[0];
       if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
-      if (![job.client_id, job.doer_id].includes(request.auth!.userId))
-        throw new ApiError(403, "job_forbidden", "Only a job participant can open a dispute.");
-      if (!["in_progress", "submitted", "revision_requested"].includes(job.status))
-        throw new ApiError(409, "job_not_disputable", "This job cannot be disputed in its current state.");
+      assertCanDispute(job, request.auth!.userId);
       await client.query(
         "INSERT INTO job_disputes (job_id,opened_by,reason_ciphertext,reason_digest) VALUES ($1,$2,$3,$4)",
         [id, request.auth!.userId, encryptPayload(reason, `dispute:${id}`), payloadDigest(reason)],
@@ -493,14 +454,7 @@ async function createSettlement(jobId: string, actorId: string, cause: string, o
     );
     const job = result.rows[0];
     if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
-    if (cause === "client_acceptance") {
-      if (job.client_id !== actorId) throw new ApiError(403, "client_only", "Only the client can accept work.");
-      if (job.status !== "submitted") throw new ApiError(409, "job_not_accepting", "Only a submitted job can be accepted.");
-    } else if (job.status !== "disputed") {
-      throw new ApiError(409, "job_not_disputed", "Only a disputed job can be resolved.");
-    }
-    if (outcome === "pay_doer" && (!job.doer_id || !job.doer_wallet))
-      throw new ApiError(409, "doer_missing", "This job has no assigned doer to pay.");
+    assertSettlementAllowed(job, actorId, cause as "client_acceptance" | "team_dispute_resolution", outcome);
     const recipient = outcome === "pay_doer" ? job.doer_wallet! : job.client_wallet;
     await client.query("INSERT INTO job_settlements (job_id,outcome,recipient,amount_raw) VALUES ($1,$2,$3,$4)", [
       jobId,

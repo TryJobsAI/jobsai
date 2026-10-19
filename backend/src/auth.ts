@@ -7,9 +7,11 @@ import { config, teamWallets } from "./config.js";
 import { ApiError } from "./http.js";
 
 const SESSION_DAYS = 7;
-const canonical = (address: string) => address.toLowerCase();
-const hashToken = (token: string) =>
-  createHash("sha256").update(`${config.AUTH_TOKEN_PEPPER}:${token}`).digest("hex");
+export const canonicalWalletAddress = (address: string) => address.toLowerCase();
+export const hashSessionToken = (token: string, pepper = config.AUTH_TOKEN_PEPPER) =>
+  createHash("sha256").update(`${pepper}:${token}`).digest("hex");
+export const bearerToken = (authorization: string | undefined) => authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+export const isTeamWallet = (address: string, wallets = teamWallets) => wallets.has(address.toLowerCase());
 
 function signInMessage(address: string, nonce: string, issuedAt: Date, expiresAt: Date) {
   return createSiweMessage({
@@ -26,7 +28,7 @@ function signInMessage(address: string, nonce: string, issuedAt: Date, expiresAt
 }
 
 export async function issueNonce(address: string) {
-  const walletAddress = canonical(address);
+  const walletAddress = canonicalWalletAddress(address);
   const nonce = randomBytes(24).toString("hex");
   const issuedAt = new Date();
   const expiresAt = new Date(issuedAt.getTime() + 10 * 60_000);
@@ -47,7 +49,7 @@ export async function createSession(input: {
   nonce: string;
   signature: `0x${string}`;
 }) {
-  const walletAddress = canonical(input.address);
+  const walletAddress = canonicalWalletAddress(input.address);
   const client = await db.connect();
   try {
     await client.query("BEGIN");
@@ -74,7 +76,7 @@ export async function createSession(input: {
     const token = randomBytes(32).toString("base64url");
     const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000);
     await client.query("INSERT INTO sessions (token_hash,user_id,expires_at) VALUES ($1,$2,$3)", [
-      hashToken(token),
+      hashSessionToken(token),
       user.rows[0].id,
       expiresAt,
     ]);
@@ -98,12 +100,12 @@ declare global {
 
 export async function requireAuth(request: Request, _response: Response, next: NextFunction) {
   try {
-    const bearer = request.header("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+    const bearer = bearerToken(request.header("authorization"));
     if (!bearer) throw new ApiError(401, "unauthenticated", "A bearer session token is required.");
     const result = await db.query<{ user_id: string; wallet_address: string }>(
       `SELECT s.user_id,u.wallet_address FROM sessions s JOIN users u ON u.id=s.user_id
        WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at>now()`,
-      [hashToken(bearer)],
+      [hashSessionToken(bearer)],
     );
     if (!result.rowCount) throw new ApiError(401, "invalid_session", "This session is invalid or expired.");
     request.auth = { userId: result.rows[0].user_id, walletAddress: result.rows[0].wallet_address };
@@ -114,7 +116,7 @@ export async function requireAuth(request: Request, _response: Response, next: N
 }
 
 export function requireTeam(request: Request, _response: Response, next: NextFunction) {
-  if (!request.auth || !teamWallets.has(request.auth.walletAddress.toLowerCase())) {
+  if (!request.auth || !isTeamWallet(request.auth.walletAddress)) {
     next(new ApiError(403, "team_only", "Only an authorized JobsAI team wallet can perform this action."));
     return;
   }
@@ -122,6 +124,6 @@ export function requireTeam(request: Request, _response: Response, next: NextFun
 }
 
 export async function revokeSession(request: Request) {
-  const bearer = request.header("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
-  if (bearer) await db.query("UPDATE sessions SET revoked_at=now() WHERE token_hash=$1", [hashToken(bearer)]);
+  const bearer = bearerToken(request.header("authorization"));
+  if (bearer) await db.query("UPDATE sessions SET revoked_at=now() WHERE token_hash=$1", [hashSessionToken(bearer)]);
 }

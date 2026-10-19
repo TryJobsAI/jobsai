@@ -19,6 +19,22 @@ jobs:
     name: Validate backend
     if: github.repository == 'TryJobsAI/jobsai'
     runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://jobsai:jobsai@127.0.0.1:5432/jobsai_test
+      RH_CHAIN_ID: "46630"
+      RH_RPC_URL: http://127.0.0.1:8545
+      USDG_TOKEN_ADDRESS: "0x0000000000000000000000000000000000000001"
+      USDG_DECIMALS: "6"
+      RH_CONFIRMATIONS: "2"
+      AUTH_DOMAIN: localhost
+      AUTH_URI: http://localhost:3001
+      AUTH_TOKEN_PEPPER: jobsai-ci-auth-pepper-0123456789abcdef
+      DATA_ENCRYPTION_KEY: jobsai-ci-encryption-key-0123456789abcdef
+      GAS_WALLET_PRIVATE_KEY: "0x1111111111111111111111111111111111111111111111111111111111111111"
+      CRON_SECRET: jobsai-ci-cron-secret-0123456789abcdef
+      TEAM_WALLET_ADDRESSES: "0x2222222222222222222222222222222222222222"
+      TRUST_PROXY: "0"
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -35,6 +51,10 @@ jobs:
       - name: Type-check backend
         working-directory: backend
         run: bun run check
+
+      - name: Run backend unit tests
+        working-directory: backend
+        run: bun run test
 
   package:
     name: Build and publish backend image
