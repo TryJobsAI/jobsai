@@ -2,7 +2,7 @@
 
 JobsAI is building a clearer path from AI-assisted discovery to paid work. This repository contains the JobsAI website preview and the backend MVP for creating and completing funded jobs on Robinhood Chain.
 
-> The current website is a product preview with fictional sample roles and local-only interactions. It is not a live job feed, does not submit applications, and is not connected to the backend API yet.
+> Career roles and sample task templates remain a local product preview. The Work Tasks panel reads funded jobs from the backend and lets an authenticated wallet claim one. The site does not yet create or fund jobs, submit work, or review deliveries.
 
 ## Product direction
 
@@ -28,7 +28,7 @@ bun run build
 bun run start
 ```
 
-The website has no external package dependencies. The preview's sample interactions run locally in the browser.
+The website has no external package dependencies. Career preview interactions run locally in the browser; live task claims use the server proxy described below.
 
 ## Run the backend locally
 
@@ -43,7 +43,7 @@ bun run migrate
 bun run dev
 ```
 
-Set real local values for the required secrets in `backend/.env`; do not commit that file. The backend currently runs independently of the static website preview.
+Set real local values for the required secrets in `backend/.env`; do not commit that file. The Work Tasks panel calls the backend through a same-origin server route. Vercel serves that route from `api/jobsai/[...path].js`; the local `server.mjs` proxies the same path during development. Both forward requests to `https://jobsai-api.onrender.com` by default. Set `JOBSAI_API_URL` on the frontend server to use another backend deployment.
 
 ## Core API
 
@@ -65,6 +65,10 @@ ghcr.io/tryjobsai/jobsai-backend:<commit-sha>
 ```
 
 The image contains the API and database migrations. Supply backend environment variables through the runtime platform; credentials are not included in the image.
+
+## Frontend and API connection
+
+The live work board requests `GET /v1/jobs/ready` through the same-origin `/api/jobsai` proxy. Claiming a job signs a SIWE login message with the connected EVM wallet and calls `POST /v1/jobs/:id/claim`. The signature is for login; claiming itself sends no blockchain transaction. The wallet session token stays in the current browser tab. Job creation, funding, submissions, revisions, acceptance, and dispute screens still need frontend wiring.
 
 ## Dual repository sync
 

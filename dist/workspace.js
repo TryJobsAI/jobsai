@@ -55,3 +55,62 @@ $('#redo-job').addEventListener('click',()=>{if($('#redo-job').disabled)return;s
 const params=new URLSearchParams(location.search);renderRoles();renderTracker();setTemplate(params.get('template')||activeTemplate);changeTab(params.get('tab')||'matches',false);
 
 window.addEventListener('storage',e=>{if(e.key==='jobsai-demo-v1'){state=JobsAIData.load();renderRoles();renderTracker();}});
+
+const liveJobRoot=$('#live-jobs-list'),liveJobStatus=$('#live-jobs-status'),walletButton=$('#live-wallet');
+const liveSessionKey='jobsai-wallet-session-v1';
+let liveJobs=[],claimingJob=null,liveSessionMemory=null;
+function readLiveSession(){try{const value=JSON.parse(sessionStorage.getItem(liveSessionKey)||'null');if(value&&typeof value.token==='string'&&typeof value.walletAddress==='string'){liveSessionMemory=value;return value;}}catch{}return liveSessionMemory;}
+function saveLiveSession(value){liveSessionMemory=value;try{if(value)sessionStorage.setItem(liveSessionKey,JSON.stringify(value));else sessionStorage.removeItem(liveSessionKey);}catch{}}
+function syncWalletButton(){const session=readLiveSession();walletButton.textContent=session?`${session.walletAddress.slice(0,6)}…${session.walletAddress.slice(-4)} · Disconnect`:'Connect wallet';walletButton.setAttribute('aria-label',session?`Disconnect ${session.walletAddress}`:'Connect wallet to claim a job');}
+function apiErrorMessage(error){if(error&&error.code===4001)return 'Wallet request cancelled.';return error instanceof Error?error.message:'The request could not be completed.';}
+function renderLiveJobs(){
+ liveJobRoot.replaceChildren();
+ if(!liveJobs.length){liveJobStatus.textContent='No funded jobs are ready to claim right now. Refresh to check again.';return;}
+ liveJobStatus.textContent=`${liveJobs.length} funded ${liveJobs.length===1?'job is':'jobs are'} ready to claim.`;
+ for(const job of liveJobs){
+  const card=el('article',undefined,'live-job-card'),top=el('div',undefined,'live-job-top'),heading=el('h3',job.title),amount=el('strong',`${job.amount} ${job.asset}`,'live-job-amount');top.append(heading,amount);
+  card.append(top,el('p',job.description,'live-job-description'));
+  const criteria=el('ul',undefined,'live-job-criteria');(Array.isArray(job.acceptanceCriteria)?job.acceptanceCriteria:[]).forEach(item=>criteria.append(el('li',item)));card.append(el('h4','Acceptance criteria'),criteria);
+  const deadline=job.deadlineAt?new Date(job.deadlineAt):null;
+  card.append(el('p',deadline&&!Number.isNaN(deadline.valueOf())?`Deadline: ${deadline.toLocaleString()}`:'No deadline provided','live-job-deadline'));
+  const claim=el('button',claimingJob===job.id?'Claiming…':'Claim job','pill primary live-job-claim');claim.type='button';claim.disabled=claimingJob===job.id;claim.addEventListener('click',()=>claimLiveJob(job.id));card.append(claim);liveJobRoot.append(card);
+ }
+}
+async function connectLiveWallet(){
+ const provider=window.ethereum;
+ if(!provider||typeof provider.request!=='function')throw new Error('Open this page in a browser with an EVM wallet to claim a job.');
+ const accounts=await provider.request({method:'eth_requestAccounts'});
+ const address=Array.isArray(accounts)?accounts[0]:null;
+ if(typeof address!=='string'||!/^0x[0-9a-fA-F]{40}$/.test(address))throw new Error('The wallet did not return a valid EVM address.');
+ const challenge=await JobsAIAPI.issueNonce(address);
+ const signature=await provider.request({method:'personal_sign',params:[challenge.data.message,address]});
+ if(typeof signature!=='string'||!/^0x[0-9a-fA-F]+$/.test(signature))throw new Error('The wallet did not return a valid signature.');
+ const login=await JobsAIAPI.verifyWallet({address,nonce:challenge.data.nonce,signature});
+ saveLiveSession({token:login.data.token,walletAddress:login.data.walletAddress});syncWalletButton();
+}
+async function claimLiveJob(jobId){
+ if(claimingJob)return;
+ claimingJob=jobId;renderLiveJobs();let finalStatus='';
+ try{
+  let session=readLiveSession();if(!session){await connectLiveWallet();session=readLiveSession();}
+  await JobsAIAPI.claim(jobId,session.token);
+  liveJobs=liveJobs.filter(job=>job.id!==jobId);finalStatus='Job claimed. It is now assigned to your wallet.';
+ }catch(error){finalStatus=apiErrorMessage(error);}
+ finally{claimingJob=null;renderLiveJobs();if(finalStatus)liveJobStatus.textContent=finalStatus;}
+}
+async function loadLiveJobs(){
+ liveJobStatus.textContent='Checking JobsAI for funded work…';$('#live-jobs-refresh').disabled=true;
+ try{const response=await JobsAIAPI.readyJobs();liveJobs=Array.isArray(response.data)?response.data:[];renderLiveJobs();}
+ catch(error){liveJobRoot.replaceChildren();liveJobStatus.textContent=apiErrorMessage(error);}
+ finally{$('#live-jobs-refresh').disabled=false;}
+}
+walletButton.addEventListener('click',async()=>{
+ const current=readLiveSession();if(current){walletButton.disabled=true;try{await JobsAIAPI.logout(current.token);}catch{}saveLiveSession(null);syncWalletButton();walletButton.disabled=false;liveJobStatus.textContent='Wallet disconnected from this browser tab.';return;}
+ walletButton.disabled=true;liveJobStatus.textContent='Sign in with your wallet to claim funded work.';
+ try{await connectLiveWallet();liveJobStatus.textContent='Wallet connected. Claim any job that fits your skills.';}
+ catch(error){liveJobStatus.textContent=apiErrorMessage(error);}
+ finally{walletButton.disabled=false;}
+});
+$('#live-jobs-refresh').addEventListener('click',loadLiveJobs);
+syncWalletButton();loadLiveJobs();
+if(window.ethereum&&typeof window.ethereum.on==='function')window.ethereum.on('accountsChanged',accounts=>{const current=readLiveSession(),address=Array.isArray(accounts)?accounts[0]?.toLowerCase():null;if(current&&address!==current.walletAddress.toLowerCase()){saveLiveSession(null);syncWalletButton();liveJobStatus.textContent='Wallet changed. Sign in again before claiming a job.';}});
