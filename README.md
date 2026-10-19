@@ -55,6 +55,17 @@ Set real local values for the required secrets in `backend/.env`; do not commit 
 
 See [`backend/.env.example`](backend/.env.example) for the environment variable names and [`backend/src/jobs.ts`](backend/src/jobs.ts) for the current route behavior.
 
+## Backend container
+
+The GitHub Actions workflow in `.github/workflows/backend.yml` type-checks the backend, builds the container on pull requests, and publishes it to GitHub Container Registry when changes reach `main` on `TryJobsAI/jobsai`:
+
+```text
+ghcr.io/tryjobsai/jobsai-backend:latest
+ghcr.io/tryjobsai/jobsai-backend:<commit-sha>
+```
+
+The image contains the API and database migrations. Supply backend environment variables through the runtime platform; credentials are not included in the image.
+
 ## Dual repository sync
 
 `origin` is the private repository and `public-origin` is the public JobsAI repository. To publish the current `main` branch to both:
