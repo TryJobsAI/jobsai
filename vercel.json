@@ -2,10 +2,18 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "bun run build",
   "outputDirectory": "dist",
-  "functions": {
-    "api/jobsai/[...path].js": {
-      "maxDuration": 30
+  "rewrites": [
+    {
+      "source": "/api/jobsai/v1/auth/:path*",
+      "destination": "https://jobsai-api.onrender.com/v1/auth/:path*"
+    },
+    {
+      "source": "/api/jobsai/v1/jobs",
+      "destination": "https://jobsai-api.onrender.com/v1/jobs"
+    },
+    {
+      "source": "/api/jobsai/v1/jobs/:path*",
+      "destination": "https://jobsai-api.onrender.com/v1/jobs/:path*"
     }
-  },
-  "bunVersion": "1.x"
+  ]
 }

@@ -35,7 +35,7 @@ bun run build
 bun run start
 ```
 
-Open the local URL printed by the server. The frontend has no external package dependencies. Its same-origin `/api/jobsai` route forwards requests to `https://jobsai-api.onrender.com` by default. Set `JOBSAI_API_URL` on the frontend server to point to another backend.
+Open the local URL printed by the server. The frontend has no external package dependencies. Its same-origin `/api/jobsai` route forwards requests to the backend at `https://jobsai-api.onrender.com`. Vercel handles this with an external rewrite; the local server uses the same proxy path during development.
 
 ### Backend
 
