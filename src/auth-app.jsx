@@ -64,7 +64,7 @@ function Auth() {
   }, [transitioning]);
 
   return <main className="jobsai-auth-page">
-    <a className="jobsai-auth-brand" href="index.html"><span className="jobsai-auth-mark">J</span>JobsAI</a>
+    <a className="jobsai-auth-brand" href="index.html"><img src="assets/jobsai-approved-mark.svg" alt="" width="34" height="40" />JobsAI</a>
     <section className="jobsai-auth-card" aria-labelledby="auth-title">
       <span className="eyebrow">SECURE WALLET SIGN-IN</span>
       <h1 id="auth-title">Your work starts here.</h1>
