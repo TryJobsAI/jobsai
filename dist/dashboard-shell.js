@@ -1,5 +1,5 @@
 (() => {
-  const tabs = ['matches', 'tracker', 'interviews', 'jobs'];
+  const tabs = ['matches', 'tracker', 'interviews', 'create', 'jobs'];
   const panels = [...document.querySelectorAll('[data-panel]')];
   const buttons = [...document.querySelectorAll('[data-tab]')];
 
@@ -20,7 +20,9 @@
   document.addEventListener('click', event => {
     const button = event.target.closest('[data-tab], [data-open-tab]');
     if (!button) return;
-    changeTab(button.dataset.tab || button.dataset.openTab);
+    const tab = button.dataset.tab || button.dataset.openTab;
+    changeTab(tab);
+    if (tab === 'create') document.dispatchEvent(new Event('jobsai:open-create'));
   });
 
   const practice = document.querySelector('#practice-check');

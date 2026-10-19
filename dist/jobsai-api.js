@@ -29,6 +29,9 @@
 
   window.JobsAIAPI = Object.freeze({
     readyJobs: () => request('/v1/jobs/ready'),
+    myJobs: token => request('/v1/jobs/mine', { token }),
+    createJob: (input, token) => request('/v1/jobs', { method: 'POST', token, body: input }),
+    fundJob: (jobId, transactionHash, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/fund`, { method: 'POST', token, body: { transactionHash } }),
     issueNonce: address => request('/v1/auth/nonce', { method: 'POST', body: { address } }),
     verifyWallet: credentials => request('/v1/auth/verify', { method: 'POST', body: credentials }),
     logout: token => request('/v1/auth/logout', { method: 'POST', token }),

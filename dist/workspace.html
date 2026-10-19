@@ -11,10 +11,10 @@
   <link rel="stylesheet" href="brand.css?v=e2c8a539d9">
   <link rel="stylesheet" href="dashboard.css?v=dcea0f9b35">
   <link rel="stylesheet" href="live-jobs.css?v=75d20ccea9">
-  <link rel="stylesheet" href="wallet/wallet.css?v=967065e228">
-  <script src="jobsai-api.js?v=8e0d653982" defer></script>
-  <script src="dashboard-shell.js?v=e7c5845bcd" defer></script>
-  <script type="module" src="wallet/workspace.js?v=90bee26a57"></script>
+  <link rel="stylesheet" href="wallet/wallet.css?v=6c12f9eeaf">
+  <script src="jobsai-api.js?v=77901d200f" defer></script>
+  <script src="dashboard-shell.js?v=6fa8b7ec69" defer></script>
+  <script type="module" src="wallet/workspace.js?v=e7792e5437"></script>
 </head>
 <body class="workspace-body">
   <a class="skip" href="#workspace-main">Skip to workspace</a>
@@ -34,6 +34,7 @@
         <button data-tab="matches"><span>⌕</span> Discover roles</button>
         <button data-tab="tracker"><span>▤</span> My applications</button>
         <button data-tab="interviews"><span>◌</span> Practice studio</button>
+        <button data-tab="create"><span>＋</span> Create a job</button>
         <button data-tab="jobs"><span>✓</span> Funded work</button>
       </nav>
       <div class="sidebar-bottom"><small>Career features are being connected to your account. Funded jobs are live.</small></div>
@@ -55,6 +56,10 @@
           <div class="practice-card"><span class="eyebrow">PRACTICE · PRIVATE TO THIS DEVICE</span><h2>Tell me about a time you solved a difficult problem at work.</h2><p>Use a real example. Explain the situation, your contribution, and what changed.</p><label for="practice-answer">Your answer</label><textarea id="practice-answer" rows="7" placeholder="Start with a real experience…"></textarea><div class="practice-actions"><button id="practice-check" class="pill primary">Review my structure</button></div><p class="workspace-footnote">This local checklist does not assess your answer with AI or send it to JobsAI.</p></div>
           <aside class="practice-tips"><h3>Make it concrete.</h3><ol><li>Set the scene briefly.</li><li>Explain what you did.</li><li>Describe a decision or tradeoff.</li><li>Share what changed or what you learned.</li></ol><img src="assets/audience-vector-poster.webp?v=283156a96c" alt="JobsAI career artwork"></aside>
         </div>
+      </section>
+      <section data-panel="create" hidden>
+        <div class="workspace-title"><div><span class="eyebrow">SET THE SCOPE. FUND THE ESCROW.</span><h1>Create a job.</h1><p>Choose ETH or USDG. The amount you enter is the amount held for the job.</p></div></div>
+        <div id="create-job-root"></div>
       </section>
       <section data-panel="jobs" hidden>
         <div class="workspace-title"><div><span class="eyebrow">A CLEAR BRIEF. A FINISHED TASK.</span><h1>A little less busywork.<br>A lot more done.</h1></div></div>
