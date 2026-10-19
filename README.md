@@ -28,7 +28,7 @@ bun run build
 bun run start
 ```
 
-The website has no external package dependencies. Career preview interactions run locally in the browser; live task claims use the server proxy described below.
+The frontend has no external package dependencies. Career preview interactions run locally in the browser; live task claims use the server proxy described below.
 
 ## Run the backend locally
 
