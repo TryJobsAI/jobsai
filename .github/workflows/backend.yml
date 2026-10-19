@@ -39,7 +39,7 @@ jobs:
   package:
     name: Build and publish backend image
     needs: validate
-    if: github.repository == 'TryJobsAI/jobsai' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    if: github.repository == 'TryJobsAI/jobsai' && (github.event_name == 'pull_request' || (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -55,7 +55,7 @@ jobs:
         run: echo "IMAGE_NAME=ghcr.io/tryjobsai/jobsai-backend" >> "$GITHUB_ENV"
 
       - name: Log in to GHCR
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef
         with:
           registry: ghcr.io
@@ -76,7 +76,52 @@ jobs:
         with:
           context: ./backend
           file: ./backend/Dockerfile
-          push: ${{ github.event_name == 'push' }}
+          push: ${{ github.event_name != 'pull_request' }}
           build-args: GIT_SHA=${{ github.sha }}
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
+
+  deploy:
+    name: Trigger backend deployment
+    needs: package
+    if: github.repository == 'TryJobsAI/jobsai' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Trigger deploy hook
+        env:
+          DEPLOY_HOOK: ${{ secrets.BACKEND_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$DEPLOY_HOOK" ]; then
+            echo "::error::Set BACKEND_DEPLOY_HOOK_URL in the production environment secrets."
+            exit 1
+          fi
+          curl --fail --silent --show-error --request POST "$DEPLOY_HOOK"
+          echo "Backend deploy hook triggered."
+
+  release:
+    name: Create backend release
+    needs: deploy
+    if: github.repository == 'TryJobsAI/jobsai' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+
+      - id: tag
+        name: Create release tag
+        run: echo "name=backend-$(date -u +%Y%m%d%H%M)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Push release tag
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.name }}
+        run: git tag "$RELEASE_TAG" && git push origin "$RELEASE_TAG"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          generate_release_notes: true
