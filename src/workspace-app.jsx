@@ -21,6 +21,122 @@ function InformationDialog({ info, onClose }) {
   </section></div>;
 }
 
+function WorkflowDialog({ dialog, onClose, onSubmit, busy }) {
+  if (!dialog) return null;
+  const { mode, job } = dialog;
+  if (mode === 'submit' || mode === 'revision' || mode === 'dispute') {
+    const isSubmit = mode === 'submit';
+    const title = isSubmit ? 'Submit your work' : mode === 'revision' ? 'Request a revision' : 'Open a dispute';
+    return <div className="workspace-overlay"><section className="workspace-modal workspace-information workflow-dialog" role="dialog" aria-modal="true" aria-labelledby="workflow-dialog-title">
+      <span className="workspace-modal-symbol" aria-hidden="true">{isSubmit ? '↗' : 'i'}</span><h2 id="workflow-dialog-title">{title}</h2><p>{job.title}</p>
+      <form onSubmit={onSubmit}>
+        {isSubmit ? <><label>Work summary<textarea name="summary" required maxLength="10000" rows="3" /></label><label>Deliverable details or link<textarea name="deliverable" required maxLength="100000" rows="4" /></label><label>Evidence links, one per line (optional)<textarea name="evidence" rows="2" /></label></> : <label>{mode === 'revision' ? 'What needs to change?' : 'Describe the dispute'}<textarea name="message" required maxLength="10000" rows="5" /></label>}
+        <div className="workflow-dialog-actions"><button type="button" className="pill outline" onClick={onClose} disabled={busy}>Cancel</button><button className="pill primary" type="submit" disabled={busy}>{busy ? 'Submitting…' : isSubmit ? 'Submit work' : mode === 'revision' ? 'Send revision request' : 'Open dispute'}</button></div>
+      </form>
+    </section></div>;
+  }
+  return <div className="workspace-overlay"><section className="workspace-modal workspace-information workflow-dialog" role="dialog" aria-modal="true" aria-labelledby="workflow-dialog-title">
+    <span className="workspace-modal-symbol" aria-hidden="true">i</span><h2 id="workflow-dialog-title">{job.title}</h2><p>{job.amount} {job.asset} · {job.status.replaceAll('_', ' ')}</p><p>{job.description}</p>{job.acceptanceCriteria?.length > 0 && <><h3>Acceptance criteria</h3><ul>{job.acceptanceCriteria.map((item, index) => <li key={index}>{item}</li>)}</ul></>}
+    {dialog.submissions?.map(item => <article className="submission-history-item" key={item.id}><h3>Submission {item.revision}</h3><p><strong>Summary</strong><br />{item.summary}</p><p><strong>Deliverable</strong><br />{item.deliverable}</p>{item.evidence?.length > 0 && <ul>{item.evidence.map(link => <li key={link}><a href={link} target="_blank" rel="noreferrer">{link}</a></li>)}</ul>}</article>)}
+    {dialog.revisions?.length > 0 && <><h3>Revision requests</h3>{dialog.revisions.map(item => <p className="submission-revision" key={item.id}>Revision {item.revision}: {item.feedback}</p>)}</>}
+    {dialog.submissions?.length === 0 && <p>No submissions have been recorded yet.</p>}
+    <div className="workflow-dialog-actions"><button type="button" className="pill outline" onClick={onClose}>Close</button>{job.clientWallet?.toLowerCase() === dialog.walletAddress?.toLowerCase() && job.status === 'submitted' && <><button type="button" className="pill outline" onClick={() => dialog.onRequestRevision(job)}>Request revision</button><button type="button" className="pill primary" onClick={() => dialog.onAccept(job)}>Accept and release payment</button></>}</div>
+  </section></div>;
+}
+
+function MyWork({ session, walletAddress }) {
+  const [jobs, setJobs] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+  const [dialog, setDialog] = useState(null);
+
+  async function refresh(showLoading = true) {
+    if (showLoading) setFeedback({ title: 'Refreshing your work', message: 'Loading jobs connected to this wallet…', kind: 'loading' });
+    try {
+      const response = await JobsAIAPI.myJobs(session.token);
+      const ownJobs = (Array.isArray(response?.data) ? response.data : []).filter(job => !['awaiting_funding', 'ready'].includes(job.status) && (job.clientWallet?.toLowerCase() === walletAddress?.toLowerCase() || job.doerWallet?.toLowerCase() === walletAddress?.toLowerCase()));
+      setJobs(ownJobs);
+      setLoaded(true);
+      if (showLoading) setFeedback(ownJobs.length ? null : { title: 'No jobs to manage yet', message: 'Jobs you create or claim will appear here. A claimed job can be unclaimed before submitting any work.', kind: 'info' });
+    } catch (error) {
+      setLoaded(true);
+      setFeedback({ title: 'Could not load your work', message: error.message || 'JobsAI could not retrieve jobs for this wallet.', kind: 'error' });
+    }
+  }
+
+  useEffect(() => { if (!loaded) refresh(false); }, [loaded, session.token, walletAddress]);
+  useEffect(() => {
+    const onWorkUpdated = () => refresh(false);
+    document.addEventListener('jobsai:work-updated', onWorkUpdated);
+    return () => document.removeEventListener('jobsai:work-updated', onWorkUpdated);
+  }, [session.token, walletAddress]);
+
+  async function doAction(title, message, action, successTitle, successMessage) {
+    setBusy(true);
+    setDialog(null);
+    setFeedback({ title, message, kind: 'loading' });
+    try {
+      await action();
+      setDialog(null);
+      await refresh(false);
+      setFeedback({ title: successTitle, message: successMessage, kind: 'success' });
+    } catch (error) {
+      setFeedback({ title: 'Action could not be completed', message: error.message || 'JobsAI could not complete this action.', kind: 'error' });
+    } finally { setBusy(false); }
+  }
+
+  async function unclaim(job) {
+    await doAction('Unclaiming job', 'Releasing this job back to the funded work board…', () => JobsAIAPI.unclaim(job.id, session.token), 'Job unclaimed', 'This job is back on the funded work board and can be claimed by another worker.');
+  }
+
+  async function openReview(job) {
+    setFeedback({ title: 'Loading job history', message: 'Retrieving submissions and revision requests…', kind: 'loading' });
+    try {
+      const [submissionResponse, revisionResponse] = await Promise.all([JobsAIAPI.submissions(job.id, session.token), JobsAIAPI.revisions(job.id, session.token)]);
+      setFeedback(null);
+      setDialog({ mode: 'review', job, submissions: submissionResponse?.data || [], revisions: revisionResponse?.data || [], walletAddress, onRequestRevision: item => setDialog({ mode: 'revision', job: item }), onAccept: item => accept(item) });
+    } catch (error) { setFeedback({ title: 'Could not load job history', message: error.message || 'JobsAI could not retrieve this job’s history.', kind: 'error' }); }
+  }
+
+  async function accept(job) {
+    await doAction('Accepting the submission', 'JobsAI is starting escrow payment to the worker…', () => JobsAIAPI.acceptWork(job.id, session.token), 'Submission accepted', 'The acceptance was recorded and escrow release is processing.');
+  }
+
+  function submitDialog(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const job = dialog.job;
+    if (dialog.mode === 'submit') {
+      const evidence = String(form.get('evidence') || '').split('\n').map(value => value.trim()).filter(Boolean);
+      void doAction('Submitting your work', 'Saving this submission to the job history…', () => JobsAIAPI.submitWork(job.id, { summary: form.get('summary'), deliverable: form.get('deliverable'), evidence }, session.token), 'Work submitted', 'Your submission is saved. The client can review it and accept it or request a revision.');
+    } else if (dialog.mode === 'revision') {
+      void doAction('Sending revision request', 'Adding the requested changes to the job history…', () => JobsAIAPI.requestRevision(job.id, form.get('message'), session.token), 'Revision requested', 'The worker can now submit another version. Earlier submissions remain in the job history.');
+    } else {
+      void doAction('Opening dispute', 'Locking the job while the team reviews its history…', () => JobsAIAPI.openDispute(job.id, form.get('message'), session.token), 'Dispute opened', 'The job is locked pending team review.');
+    }
+  }
+
+  const statusLabels = { in_progress: 'In progress', revision_requested: 'Revision requested', submitted: 'Submitted', disputed: 'Disputed', settlement_pending: 'Settlement pending', completed: 'Completed', refunded: 'Refunded' };
+  return <section className="my-work-section" aria-labelledby="my-work-title">
+    <div className="my-work-heading"><div><span className="eyebrow">CLAIMED AND CREATED JOBS</span><h2 id="my-work-title">My work</h2></div><button className="pill outline" onClick={() => refresh()} disabled={busy}>Refresh</button></div>
+    <div className="my-work-list">{jobs.map(job => {
+      const isDoer = job.doerWallet?.toLowerCase() === walletAddress?.toLowerCase();
+      const isClient = job.clientWallet?.toLowerCase() === walletAddress?.toLowerCase();
+      const canSubmit = isDoer && ['in_progress', 'revision_requested'].includes(job.status);
+      const canDispute = ['in_progress', 'revision_requested', 'submitted'].includes(job.status) && (isDoer || isClient);
+      return <article className="my-work-card" key={job.id}><div className="my-work-summary"><div><h3>{job.title}</h3><span className="my-work-status">{statusLabels[job.status] || job.status.replaceAll('_', ' ')}</span></div><strong>{job.amount} {job.asset}</strong></div><div className="my-work-actions">
+        <button className="pill outline" onClick={() => openReview(job)}>View job history</button>
+        {canSubmit && <button className="pill primary" onClick={() => setDialog({ mode: 'submit', job })}>Submit work</button>}
+        {isDoer && job.status === 'in_progress' && <button className="pill outline" disabled={busy} onClick={() => unclaim(job)}>Unclaim job</button>}
+        {canDispute && <button className="pill outline" onClick={() => setDialog({ mode: 'dispute', job })}>Open dispute</button>}
+      </div></article>;
+    })}</div>
+    {feedback && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="my-work-feedback-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="my-work-feedback-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
+    <WorkflowDialog dialog={dialog} onClose={() => setDialog(null)} onSubmit={submitDialog} busy={busy} />
+  </section>;
+}
+
 function goToAuth() {
   const next = `workspace.html${location.search}`;
   location.replace(`auth.html?next=${encodeURIComponent(next)}`);
@@ -50,6 +166,7 @@ function FundedJobs({ session }) {
     try {
       await JobsAIAPI.claim(job.id, session.token);
       setJobs(current => current.filter(item => item.id !== job.id));
+      document.dispatchEvent(new Event('jobsai:work-updated'));
       setFeedback({ title: 'Job claimed', message: 'This job is now assigned to your wallet.', kind: 'success' });
     } catch (error) { setFeedback({ title: 'Could not claim job', message: error.message || 'The job could not be claimed.', kind: 'error' }); }
     finally { setBusy(''); }
@@ -194,6 +311,7 @@ function WorkspaceContext() {
   const [session, setSession] = useState(readSession);
   const header = document.getElementById('wallet-header-root');
   const jobsRoot = document.getElementById('live-jobs-root');
+  const workRoot = document.getElementById('work-management-root');
   const createJobRoot = document.getElementById('create-job-root');
 
   useEffect(() => {
@@ -213,10 +331,11 @@ function WorkspaceContext() {
     goToAuth();
   }
 
-  if (!header || !jobsRoot || !createJobRoot || !session?.token) return null;
+  if (!header || !jobsRoot || !workRoot || !createJobRoot || !session?.token) return null;
   return <>
     {createPortal(<><ConnectButton.Custom>{({ account, openAccountModal, mounted }) => <button className="workspace-account-button" onClick={openAccountModal} disabled={!mounted || !account} aria-label={`Connected wallet ${account?.displayName || ''}`}><span className="workspace-account-status" />{account?.displayName || 'Connected wallet'}</button>}</ConnectButton.Custom><button className="workspace-signout" onClick={signOut}>Sign out</button></>, header)}
     {createPortal(<FundedJobs session={session} />, jobsRoot)}
+    {createPortal(<MyWork session={session} walletAddress={address} />, workRoot)}
     {createPortal(<CreateJobPanel session={session} walletAddress={address} chainId={chainId} />, createJobRoot)}
   </>;
 }

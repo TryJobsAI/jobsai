@@ -20,11 +20,11 @@ Each job uses ETH or USDG from start to finish. The client chooses the asset and
 ## Explore JobsAI
 
 - **Career workspace:** Explore interactive job discovery, application preparation, interview practice, and progress tracking.
-- **Funded work board:** Browse available funded jobs and claim one with an EVM wallet.
-- **Escrow lifecycle:** Create and fund jobs, track submissions and revisions, accept delivery for settlement, or resolve a dispute through the team API.
+- **Funded work board:** Browse available funded jobs and claim one with an EVM wallet. Before submitting, a worker can unclaim a job and return it to the board.
+- **Escrow lifecycle:** Create and fund jobs, submit work and revisions, review delivery, accept it for settlement, or open a dispute. The team resolves disputes through the team API.
 - **Robinhood Chain:** Backend transactions use the configured Robinhood Chain network. The included development setup defaults to testnet.
 
-The website is an interactive product experience, and the backend exposes the complete job lifecycle. Career accounts, employer feeds, AI generation, and career payments are not connected yet. The current web app connects the funded work board and wallet claim flow; the other job management actions are available through the API while their web screens are being built.
+The website connects the funded work lifecycle from job creation and escrow funding through claiming, submission, revisions, client review, and acceptance. Career accounts, employer feeds, AI generation, and career payments are not connected yet.
 
 ## Run locally
 

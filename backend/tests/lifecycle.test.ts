@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertClaimable,
+  assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertCanUnclaim, assertClaimable,
   assertDisputed, assertJobClient, assertParticipants, assertSettlementAllowed,
 } from "../src/lifecycle.js";
 
@@ -28,6 +28,13 @@ describe("job lifecycle rules", () => {
     expect(() => assertCanRequestRevision(submitted, "client")).not.toThrow();
     expectCode(() => assertCanRequestRevision(submitted, "doer"), 403, "client_only");
     expectCode(() => assertCanRequestRevision({ ...submitted, active_submission_id: null }, "client"), 409, "job_not_reviewable");
+  });
+
+  test("a doer may unclaim only before submitting work", () => {
+    expect(() => assertCanUnclaim({ doer_id: "doer", status: "in_progress", has_submissions: false }, "doer")).not.toThrow();
+    expectCode(() => assertCanUnclaim({ doer_id: "other", status: "in_progress", has_submissions: false }, "doer"), 403, "doer_only");
+    expectCode(() => assertCanUnclaim({ doer_id: "doer", status: "submitted", has_submissions: true }, "doer"), 409, "job_not_unclaimable");
+    expectCode(() => assertCanUnclaim({ doer_id: "doer", status: "disputed", has_submissions: false }, "doer"), 409, "job_not_unclaimable");
   });
 
   test("participant access, dispute lock, and both settlement decisions are guarded", () => {

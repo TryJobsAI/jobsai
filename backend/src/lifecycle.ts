@@ -2,6 +2,7 @@ import { ApiError } from "./http.js";
 
 type ClaimableJob = { client_id: string; status: string; deadline_at: Date | null };
 type SubmissionJob = { doer_id: string | null; status: string };
+type UnclaimableJob = { doer_id: string | null; status: string; has_submissions: boolean };
 type ReviewJob = { client_id: string; status: string; active_submission_id: string | null };
 type DisputableJob = { client_id: string; doer_id: string | null; status: string };
 type SettlementJob = {
@@ -23,6 +24,13 @@ export function assertClaimable(job: ClaimableJob, actorId: string, now = new Da
     throw new ApiError(409, "job_not_claimable", "This job is no longer ready to claim.");
   if (job.deadline_at && job.deadline_at <= now)
     throw new ApiError(409, "job_deadline_passed", "This job's deadline has passed.");
+}
+
+export function assertCanUnclaim(job: UnclaimableJob, actorId: string) {
+  if (job.doer_id !== actorId)
+    throw new ApiError(403, "doer_only", "Only the doer who claimed this job can unclaim it.");
+  if (job.status !== "in_progress" || job.has_submissions)
+    throw new ApiError(409, "job_not_unclaimable", "A job can only be unclaimed before any work is submitted.");
 }
 
 export function assertCanSubmit(job: SubmissionJob, actorId: string) {

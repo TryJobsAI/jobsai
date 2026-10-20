@@ -11,7 +11,7 @@ import { makeEscrowWallet, verifyJobFunding, type FundingTerms, type JobAsset } 
 import { ApiError, asyncRoute } from "./http.js";
 import { processSettlement } from "./settlement.js";
 import { createJobInputSchema, parseDeadline, parseJobAmount, submissionInputSchema } from "./job-input.js";
-import { assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertClaimable, assertDisputed, assertJobClient, assertParticipants, assertSettlementAllowed } from "./lifecycle.js";
+import { assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertCanUnclaim, assertClaimable, assertDisputed, assertJobClient, assertParticipants, assertSettlementAllowed } from "./lifecycle.js";
 
 export const jobsRouter = Router();
 const uuid = z.string().uuid();
@@ -263,6 +263,35 @@ jobsRouter.post(
       await appendEvent(client, id, request.auth!.userId, "job.claimed");
       await client.query("COMMIT");
       response.json({ data: { jobId: id, status: "in_progress" } });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }),
+);
+
+jobsRouter.post(
+  "/:id/unclaim",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const id = uuid.parse(request.params.id);
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const selected = await client.query<{ doer_id: string | null; status: string; has_submissions: boolean }>(
+        `SELECT j.doer_id,j.status,EXISTS(SELECT 1 FROM job_submissions s WHERE s.job_id=j.id) AS has_submissions
+         FROM jobs j WHERE j.id=$1 FOR UPDATE`,
+        [id],
+      );
+      const job = selected.rows[0];
+      if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
+      assertCanUnclaim(job, request.auth!.userId);
+      await client.query("UPDATE jobs SET doer_id=NULL,status='ready',claimed_at=NULL,updated_at=now() WHERE id=$1", [id]);
+      await appendEvent(client, id, request.auth!.userId, "job.unclaimed");
+      await client.query("COMMIT");
+      response.json({ data: { jobId: id, status: "ready" } });
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

@@ -36,5 +36,12 @@
     verifyWallet: credentials => request('/v1/auth/verify', { method: 'POST', body: credentials }),
     logout: token => request('/v1/auth/logout', { method: 'POST', token }),
     claim: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/claim`, { method: 'POST', token, body: {} }),
+    unclaim: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/unclaim`, { method: 'POST', token, body: {} }),
+    submissions: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/submissions`, { token }),
+    revisions: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/revisions`, { token }),
+    submitWork: (jobId, input, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/submissions`, { method: 'POST', token, body: input }),
+    requestRevision: (jobId, feedback, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/revisions`, { method: 'POST', token, body: { feedback } }),
+    acceptWork: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/accept`, { method: 'POST', token, body: {} }),
+    openDispute: (jobId, reason, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/disputes`, { method: 'POST', token, body: { reason } }),
   });
 })();
