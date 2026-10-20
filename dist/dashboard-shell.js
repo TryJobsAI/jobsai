@@ -2,6 +2,39 @@
   const tabs = ['matches', 'tracker', 'interviews', 'create', 'jobs'];
   const panels = [...document.querySelectorAll('[data-panel]')];
   const buttons = [...document.querySelectorAll('[data-tab]')];
+  const infoDialog = document.querySelector('#workspace-info');
+  const infoTitle = document.querySelector('#workspace-info-title');
+  const infoContent = document.querySelector('#workspace-info-content');
+  const information = {
+    workspace: { title: 'Your JobsAI workspace', paragraphs: ['Wallet sign-in connects your account to funded jobs and keeps your session in this browser. Career discovery, application tracking, and practice tools are separate workspace areas.'] },
+    career: { title: 'Career discovery', paragraphs: ['Personalized career matching is not available yet. You can browse and claim live funded work from the Funded work tab.'] },
+    applications: { title: 'Application board', paragraphs: ['Application tracking is not available yet. Your board will appear here when career application services are connected.'] },
+    practice: { title: 'Practice guide and privacy', paragraphs: ['Use a real example. Set the situation, explain your contribution and decisions, then describe what changed or what you learned.', 'The structure checklist runs in this browser. It does not assess answer quality with AI or send your answer to JobsAI.'] },
+    funding: { title: 'Payment and funding', paragraphs: ['Choose ETH or USDG and enter the exact amount you want held for the job. Creating the job does not move funds. You approve the separate escrow transfer in your wallet.'] },
+    'funded-work': { title: 'How funded work operates', paragraphs: ['Open a job’s details and review its scope and acceptance criteria before claiming. Claiming assigns the work to your wallet. Funds are released after the client accepts a submission, or after the team resolves a dispute.'] },
+    pass: { title: 'Career Pass', paragraphs: ['Career Pass checkout is not available yet. JobsAI will show the offer here when it is ready.'] },
+  };
+
+  document.addEventListener('click', event => {
+    const trigger = event.target.closest('[data-info]');
+    if (trigger && infoDialog) {
+      const copy = information[trigger.dataset.info];
+      if (!copy) return;
+      infoTitle.textContent = copy.title;
+      infoContent.replaceChildren(...copy.paragraphs.map(text => {
+        const paragraph = document.createElement('p');
+        paragraph.textContent = text;
+        return paragraph;
+      }));
+      infoDialog.showModal();
+    }
+  });
+  document.querySelector('[data-close-workspace-info]')?.addEventListener('click', () => infoDialog?.close());
+  infoDialog?.addEventListener('click', event => {
+    if (event.target !== infoDialog) return;
+    const rect = infoDialog.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) infoDialog.close();
+  });
 
   function changeTab(tab, update = true) {
     if (!tabs.includes(tab)) tab = 'jobs';

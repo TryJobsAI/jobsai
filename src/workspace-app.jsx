@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { ConnectButton, RainbowKitProvider } from '@rainbow-me/rainbowkit';
@@ -7,6 +7,19 @@ import { WagmiProvider, useAccount, useDisconnect, usePublicClient, useSendTrans
 import { erc20Abi } from 'viem';
 import { JobsAIAPI, queryClient, readSession, robinhood, sessionKey, walletConfig } from './wallet-config.jsx';
 import './wallet-app.css';
+
+function InformationDialog({ info, onClose }) {
+  const titleId = useId();
+  if (!info) return null;
+  return <div className="workspace-overlay"><section className="workspace-modal workspace-information" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+    <span className="workspace-modal-symbol" aria-hidden="true">i</span>
+    <h2 id={titleId}>{info.title}</h2>
+    {info.paragraphs?.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+    {info.items?.length > 0 && <><h3>{info.itemsLabel || 'Details'}</h3><ul>{info.items.map((item, index) => <li key={index}>{item}</li>)}</ul></>}
+    {info.code && <><h3>{info.codeLabel || 'Reference'}</h3><code>{info.code}</code></>}
+    <button className="pill primary" onClick={onClose}>Got it</button>
+  </section></div>;
+}
 
 function goToAuth() {
   const next = `workspace.html${location.search}`;
@@ -17,6 +30,7 @@ function FundedJobs({ session }) {
   const [jobs, setJobs] = useState([]);
   const [busy, setBusy] = useState('');
   const [feedback, setFeedback] = useState({ title: 'Loading funded jobs', message: 'Checking for currently funded work…', kind: 'loading' });
+  const [jobInfo, setJobInfo] = useState(null);
 
   async function refresh() {
     setFeedback({ title: 'Loading funded jobs', message: 'Checking for currently funded work…', kind: 'loading' });
@@ -24,7 +38,7 @@ function FundedJobs({ session }) {
       const response = await JobsAIAPI.readyJobs();
       const ready = Array.isArray(response?.data) ? response.data : [];
       setJobs(ready);
-      setFeedback(null);
+      setFeedback(ready.length ? null : { title: 'No funded jobs are ready', message: 'Check again later or refresh to look for newly funded work.', kind: 'info' });
     } catch (error) { setJobs([]); setFeedback({ title: 'Could not load funded jobs', message: error.message || 'JobsAI could not load funded jobs.', kind: 'error' }); }
   }
 
@@ -43,18 +57,15 @@ function FundedJobs({ session }) {
 
   return <>
     <div className="live-jobs-heading">
-      <div><span className="eyebrow">LIVE · FUNDED ONCHAIN</span><h2 id="live-jobs-title">Jobs ready to claim</h2><p>Review each funded job, its listed asset, and acceptance criteria before claiming.</p></div>
+      <div><span className="eyebrow">LIVE · FUNDED ONCHAIN</span><h2 id="live-jobs-title">Jobs ready to claim</h2><button className="text-info-button" onClick={() => setJobInfo({ title: 'Review a funded job', paragraphs: ['Open job details to read the scope, acceptance criteria, listed asset, and deadline before claiming. Claiming assigns the work to you and does not move funds.'] })}>How funded work works</button></div>
       <button className="pill outline" onClick={refresh} disabled={!!busy}>Refresh</button>
     </div>
-    {!jobs.length && !feedback && <div className="live-jobs-empty"><h3>No funded jobs are ready right now.</h3><p>Check back later or refresh to look for new work.</p></div>}
     <div className="live-jobs-list">{jobs.map(job => <article className="live-job-card" key={job.id}>
       <div className="live-job-top"><h3>{job.title}</h3><strong className="live-job-amount">{job.amount} {job.asset}</strong></div>
-      <p className="live-job-description">{job.description}</p>
-      {!!job.acceptanceCriteria?.length && <><h4>Acceptance criteria</h4><ul className="live-job-criteria">{job.acceptanceCriteria.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul></>}
-      <p className="live-job-deadline">{job.deadlineAt && !Number.isNaN(new Date(job.deadlineAt).valueOf()) ? `Deadline: ${new Date(job.deadlineAt).toLocaleString()}` : 'No deadline provided'}</p>
-      <button className="pill primary live-job-claim" disabled={!!busy} onClick={() => claim(job)}>Claim job</button>
+      <div className="live-job-actions"><button className="pill outline" onClick={() => setJobInfo({ title: job.title, paragraphs: [job.description, job.deadlineAt && !Number.isNaN(new Date(job.deadlineAt).valueOf()) ? `Deadline: ${new Date(job.deadlineAt).toLocaleString()}` : 'No deadline provided'], itemsLabel: 'Acceptance criteria', items: job.acceptanceCriteria || [] })}>View details</button><button className="pill primary live-job-claim" disabled={!!busy} onClick={() => claim(job)}>Claim job</button></div>
     </article>)}</div>
-    {feedback && <div className="workspace-overlay" role="presentation"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="workspace-modal-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : '!'}</span><h2 id="workspace-modal-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
+    {feedback && <div className="workspace-overlay" role="presentation"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="workspace-modal-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="workspace-modal-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
+    <InformationDialog info={jobInfo} onClose={() => setJobInfo(null)} />
   </>;
 }
 
@@ -68,6 +79,7 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
   const [jobs, setJobs] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const [jobInfo, setJobInfo] = useState(null);
   const [saving, setSaving] = useState(false);
   const publicClient = usePublicClient({ chainId: robinhood.id });
   const { sendTransactionAsync } = useSendTransaction();
@@ -80,7 +92,7 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
       const ownJobs = (Array.isArray(response?.data) ? response.data : []).filter(job => job.clientWallet?.toLowerCase() === walletAddress?.toLowerCase()).map(job => ({ ...job, pendingFundingHash: localStorage.getItem(`jobsai-pending-funding-${job.id}`) || undefined }));
       setJobs(ownJobs);
       setLoaded(true);
-      if (showLoading) setFeedback(null);
+      if (showLoading) setFeedback(ownJobs.length ? null : { title: 'No jobs created yet', message: 'Your jobs will appear here after you create one.', kind: 'info' });
       return ownJobs;
     } catch (error) {
       setLoaded(true);
@@ -98,6 +110,12 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
 
   async function createJob(event) {
     event.preventDefault();
+    const invalidField = event.currentTarget.querySelector(':invalid');
+    if (invalidField) {
+      invalidField.focus();
+      setFeedback({ title: 'Check the job details', message: 'Complete the required fields using the formats shown before creating this job.', kind: 'error' });
+      return;
+    }
     const acceptanceCriteria = criteria.split('\n').map(item => item.trim()).filter(Boolean);
     if (!acceptanceCriteria.length) {
       setFeedback({ title: 'Add acceptance criteria', message: 'Enter at least one clear condition for accepting the finished work.', kind: 'error' });
@@ -149,24 +167,24 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
   }
 
   return <div className="create-job-grid">
-    <form className="create-job-form" onSubmit={createJob}>
-      <div className="create-job-form-heading"><span className="eyebrow">JOB DETAILS</span><h2>Describe the work.</h2><p>Make the scope and finish line clear before funding.</p></div>
-      <label>Job title<input required minLength="3" maxLength="160" value={title} onChange={event => setTitle(event.target.value)} placeholder="e.g. Build a product launch page" /></label>
-      <label>Description<textarea required maxLength="20000" rows="5" value={description} onChange={event => setDescription(event.target.value)} placeholder="Explain the task, expected output, and any relevant context." /></label>
-      <label>Acceptance criteria <small>One criterion per line</small><textarea required rows="4" value={criteria} onChange={event => setCriteria(event.target.value)} placeholder={'Responsive on mobile and desktop\nSource files included'} /></label>
-      <div className="create-job-payment-row"><label>Payment asset<select value={asset} onChange={event => setAsset(event.target.value)}><option value="eth">ETH</option><option value="usdg">USDG</option></select></label><label>Amount<input required inputMode="decimal" pattern="(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,18})?" value={amount} onChange={event => setAmount(event.target.value)} placeholder={asset === 'eth' ? '0.05' : '25'} /></label></div>
-      <label>Deadline <small>Optional</small><input type="datetime-local" value={deadlineAt} onChange={event => setDeadlineAt(event.target.value)} /></label>
+    <form className="create-job-form" noValidate onSubmit={createJob}>
+      <div className="create-job-form-heading"><span className="eyebrow">JOB DETAILS</span><h2>Describe the work.</h2><button type="button" className="text-info-button" onClick={() => setJobInfo({ title: 'Write a clear job brief', paragraphs: ['Describe the task and expected output. Add acceptance criteria that make completion easy to review. You can set an optional deadline. Creating a job does not move funds; funding is a separate wallet approval.'] })}>Writing a clear brief</button></div>
+      <label>Job title<input required minLength="3" maxLength="160" value={title} onChange={event => setTitle(event.target.value)} /></label>
+      <label>Description<textarea required maxLength="20000" rows="5" value={description} onChange={event => setDescription(event.target.value)} /></label>
+      <div className="criteria-field"><div className="criteria-field-header"><label htmlFor="job-acceptance-criteria">Acceptance criteria</label><button type="button" className="inline-info-button" onClick={() => setJobInfo({ title: 'Acceptance criteria', paragraphs: ['Enter one clear condition per line. For example: “Works on mobile and desktop” or “Include the source files.” The worker and client use these conditions to review each submission and revision.'] })}>How to write criteria</button></div><textarea id="job-acceptance-criteria" required rows="4" value={criteria} onChange={event => setCriteria(event.target.value)} /></div>
+      <div className="create-job-payment-row"><label>Payment asset<select value={asset} onChange={event => setAsset(event.target.value)}><option value="eth">ETH</option><option value="usdg">USDG</option></select></label><label>Amount<input required inputMode="decimal" pattern="(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,18})?" value={amount} onChange={event => setAmount(event.target.value)} /></label></div>
+      <label>Deadline<input type="datetime-local" value={deadlineAt} onChange={event => setDeadlineAt(event.target.value)} /></label>
       <button className="pill primary" type="submit" disabled={saving}>Create job</button>
-      <p className="create-job-note">Creating a job does not move funds. You review and approve the escrow transfer in your wallet as a separate step.</p>
     </form>
     <section className="created-jobs-card" aria-labelledby="created-jobs-title"><div className="created-jobs-heading"><div><span className="eyebrow">YOUR JOBS</span><h2 id="created-jobs-title">Created jobs</h2></div><button className="pill outline" onClick={() => loadJobs()} disabled={saving}>Refresh</button></div>
-      {!loaded && <p className="created-jobs-empty">Your jobs will appear here. Select Refresh to load existing jobs from this wallet.</p>}
-      {loaded && !jobs.length && <p className="created-jobs-empty">You haven’t created any jobs yet.</p>}
-      <div className="created-jobs-list">{jobs.map(job => <article className="created-job-item" key={job.id}><div className="created-job-summary"><div><h3>{job.title}</h3><span className={`created-job-status status-${job.status}`}>{job.status.replaceAll('_', ' ')}</span></div><strong>{job.amount} {job.asset}</strong></div>
-        {job.status === 'awaiting_funding' ? <><p>{job.pendingFundingHash ? 'A transfer was sent. Verify it to publish the job.' : 'Fund the escrow to publish this job for workers.'}</p><code>{job.escrowAddress}</code><button className="pill primary" onClick={() => fundJob(job)} disabled={saving}>{job.pendingFundingHash ? 'Verify deposit' : 'Fund job'}</button></> : <p>{job.status === 'ready' ? 'Funded and open for eligible workers to claim.' : `Current status: ${job.status.replaceAll('_', ' ')}.`}</p>}
+      <div className="created-jobs-list">{jobs.map(job => <article className="created-job-item" key={job.id}><div className="created-job-summary"><h3>{job.title}</h3><strong>{job.amount} {job.asset}</strong></div>
+        <div className="created-job-actions"><button className="pill outline" onClick={() => setJobInfo({ title: job.title, paragraphs: [`Status: ${job.status.replaceAll('_', ' ')}.`, job.description, job.deadlineAt ? `Deadline: ${new Date(job.deadlineAt).toLocaleString()}` : 'No deadline provided.', ...(job.pendingFundingHash ? ['A transfer was sent. Verify it to publish the job; do not send funds again.'] : [])], itemsLabel: 'Acceptance criteria', items: job.acceptanceCriteria || [], code: job.status === 'awaiting_funding' ? job.escrowAddress : undefined, codeLabel: 'Escrow address' })}>View details</button>
+          {job.status === 'awaiting_funding' && <button className="pill primary" onClick={() => fundJob(job)} disabled={saving}>{job.pendingFundingHash ? 'Verify deposit' : 'Fund job'}</button>}
+        </div>
       </article>)}</div>
     </section>
-    {feedback && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="create-job-modal-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : '!'}</span><h2 id="create-job-modal-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
+    {feedback && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="create-job-modal-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="create-job-modal-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
+    <InformationDialog info={jobInfo} onClose={() => setJobInfo(null)} />
   </div>;
 }
 

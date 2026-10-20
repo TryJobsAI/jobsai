@@ -11,10 +11,10 @@
   <link rel="stylesheet" href="brand.css?v=e2c8a539d9">
   <link rel="stylesheet" href="dashboard.css?v=dcea0f9b35">
   <link rel="stylesheet" href="live-jobs.css?v=75d20ccea9">
-  <link rel="stylesheet" href="wallet/wallet.css?v=6c12f9eeaf">
+  <link rel="stylesheet" href="wallet/wallet.css?v=94aac791f7">
   <script src="jobsai-api.js?v=77901d200f" defer></script>
-  <script src="dashboard-shell.js?v=6fa8b7ec69" defer></script>
-  <script type="module" src="wallet/workspace.js?v=e7792e5437"></script>
+  <script src="dashboard-shell.js?v=0bf5d589e1" defer></script>
+  <script type="module" src="wallet/workspace.js?v=f2490c5f51"></script>
 </head>
 <body class="workspace-body">
   <a class="skip" href="#workspace-main">Skip to workspace</a>
@@ -37,28 +37,28 @@
         <button data-tab="create"><span>＋</span> Create a job</button>
         <button data-tab="jobs"><span>✓</span> Funded work</button>
       </nav>
-      <div class="sidebar-bottom"><small>Career features are being connected to your account. Funded jobs are live.</small></div>
+      <div class="sidebar-bottom"><button class="sidebar-info-trigger" data-info="workspace">About this workspace</button></div>
     </aside>
     <main id="workspace-main">
-      <div class="workspace-context-banner"><span class="demo-dot"></span><strong>JOBS AI WORKSPACE</strong><span>Your wallet session keeps your work connected.</span></div>
+      <div class="workspace-context-banner"><span class="demo-dot"></span><strong>JOBS AI WORKSPACE</strong><button class="workspace-banner-info" data-info="workspace">Workspace details</button></div>
       <section data-panel="matches" hidden>
-        <div class="workspace-title workspace-welcome"><div><span class="eyebrow">A LITTLE CLARITY. A LOT OF POSSIBILITY.</span><h1>Good work starts<br>with your next move.</h1><p>Career discovery tools will appear here when connected to your account.</p></div><img src="assets/cta-transparent-poster.png?v=3e309554af" alt="JobsAI checked card artwork"></div>
-        <div class="role-empty"><div><span class="eyebrow">DISCOVER YOUR NEXT STEP</span><h2>Career matching is on its way.</h2><p>Browse funded work while personalized career opportunities are being connected to your account.</p><button class="pill primary" data-open-tab="jobs">Browse funded jobs →</button></div></div>
+        <div class="workspace-title workspace-welcome"><div><span class="eyebrow">A LITTLE CLARITY. A LOT OF POSSIBILITY.</span><h1>Good work starts<br>with your next move.</h1><button class="text-info-button" data-info="career">Career discovery details</button></div><img src="assets/cta-transparent-poster.png?v=3e309554af" alt="JobsAI checked card artwork"></div>
+        <div class="role-empty"><div><span class="eyebrow">DISCOVER YOUR NEXT STEP</span><h2>Career matching</h2><button class="pill outline" data-info="career">About career matching</button><button class="pill primary" data-open-tab="jobs">Browse funded jobs →</button></div></div>
       </section>
       <section data-panel="tracker" hidden>
         <div class="workspace-title"><div><span class="eyebrow">KEEP THE NEXT STEP IN SIGHT</span><h1>Your application board.</h1></div></div>
         <div class="workspace-section-head"><h2>Applications</h2></div>
-        <div class="role-empty"><div><span class="eyebrow">YOUR APPLICATIONS</span><h2>Your application board is ready.</h2><p>Application tracking will appear here when it is connected to your account.</p><button class="pill outline" data-open-tab="matches">Explore career tools →</button></div></div>
+        <div class="role-empty"><div><span class="eyebrow">YOUR APPLICATIONS</span><h2>Application board</h2><button class="pill outline" data-info="applications">Application board details</button><button class="pill primary" data-open-tab="matches">Explore career tools →</button></div></div>
       </section>
       <section data-panel="interviews" hidden>
         <div class="workspace-title"><div><span class="eyebrow">A LITTLE PRACTICE GOES A LONG WAY</span><h1>Your experience.<br>In your own words.</h1></div></div>
         <div class="practice-layout">
-          <div class="practice-card"><span class="eyebrow">PRACTICE · PRIVATE TO THIS DEVICE</span><h2>Tell me about a time you solved a difficult problem at work.</h2><p>Use a real example. Explain the situation, your contribution, and what changed.</p><label for="practice-answer">Your answer</label><textarea id="practice-answer" rows="7" placeholder="Start with a real experience…"></textarea><div class="practice-actions"><button id="practice-check" class="pill primary">Review my structure</button></div><p class="workspace-footnote">This local checklist does not assess your answer with AI or send it to JobsAI.</p></div>
-          <aside class="practice-tips"><h3>Make it concrete.</h3><ol><li>Set the scene briefly.</li><li>Explain what you did.</li><li>Describe a decision or tradeoff.</li><li>Share what changed or what you learned.</li></ol><img src="assets/audience-vector-poster.webp?v=283156a96c" alt="JobsAI career artwork"></aside>
+          <div class="practice-card"><span class="eyebrow">PRACTICE STUDIO</span><h2>Tell me about a time you solved a difficult problem at work.</h2><button class="text-info-button" data-info="practice">Practice guide and privacy</button><label for="practice-answer">Your answer</label><textarea id="practice-answer" rows="7"></textarea><div class="practice-actions"><button id="practice-check" class="pill primary">Review my structure</button></div></div>
+          <aside class="practice-tips"><h3>Practice guide</h3><button class="pill outline" data-info="practice">Open the practice guide</button><img src="assets/audience-vector-poster.webp?v=283156a96c" alt="JobsAI career artwork"></aside>
         </div>
       </section>
       <section data-panel="create" hidden>
-        <div class="workspace-title"><div><span class="eyebrow">SET THE SCOPE. FUND THE ESCROW.</span><h1>Create a job.</h1><p>Choose ETH or USDG. The amount you enter is the amount held for the job.</p></div></div>
+        <div class="workspace-title"><div><span class="eyebrow">SET THE SCOPE. FUND THE ESCROW.</span><h1>Create a job.</h1><button class="text-info-button" data-info="funding">Payment and funding details</button></div></div>
         <div id="create-job-root"></div>
       </section>
       <section data-panel="jobs" hidden>
@@ -67,13 +67,14 @@
       </section>
     </main>
     <aside class="dashboard-rail" aria-label="Your next steps">
-      <article class="next-step-card"><div class="rail-kicker"><span>YOUR NEXT GOOD STEP</span><span>↗</span></div><span class="outlined-icon">✓</span><h2>Find work with a clear finish line.</h2><p>Review the scope, asset, and acceptance criteria before claiming.</p><button class="pill primary" data-open-tab="jobs">Browse funded jobs <span>→</span></button><small>Live listings · Funded onchain</small></article>
-      <article class="rail-card"><div class="rail-heading"><h2>Your workspace</h2><span>✦</span></div><div class="next-action"><span class="action-number">01</span><div><strong>Career discovery</strong><p>Role feeds are being connected.</p><button data-open-tab="matches">View career tools →</button></div></div><div class="next-action"><span class="action-number">02</span><div><strong>Applications</strong><p>Track applications when career services are available.</p><button data-open-tab="tracker">Open your board →</button></div></div><div class="next-action"><span class="action-number">03</span><div><strong>Interview practice</strong><p>Prepare a real example in your own words.</p><button data-open-tab="interviews">Open practice →</button></div></div></article>
-      <article class="rail-card pass-card"><img src="assets/jobsai-approved-mark.svg?v=9e2067afbf" alt="" width="36" height="42"><h2>A little more support.</h2><p>Career Pass details and checkout are coming soon.</p><small>Not available yet</small></article>
+      <article class="next-step-card"><div class="rail-kicker"><span>YOUR NEXT GOOD STEP</span><span>↗</span></div><span class="outlined-icon">✓</span><h2>Find work with a clear finish line.</h2><button class="text-info-button" data-info="funded-work">How funded work operates</button><button class="pill primary" data-open-tab="jobs">Browse funded jobs <span>→</span></button><small>Funded onchain</small></article>
+      <article class="rail-card"><div class="rail-heading"><h2>Your workspace</h2><span>✦</span></div><div class="next-action"><span class="action-number">01</span><div><strong>Career discovery</strong><button data-info="career">Career discovery details</button></div></div><div class="next-action"><span class="action-number">02</span><div><strong>Applications</strong><button data-info="applications">Application board details</button></div></div><div class="next-action"><span class="action-number">03</span><div><strong>Interview practice</strong><button data-info="practice">Practice guide</button></div></div></article>
+      <article class="rail-card pass-card"><img src="assets/jobsai-approved-mark.svg?v=9e2067afbf" alt="" width="36" height="42"><h2>Career Pass</h2><button class="text-info-button" data-info="pass">Career Pass details</button></article>
       <div class="rail-footer"><a href="index.html#faq">FAQs ↗</a><span>JobsAI © 2026 · Your AI for work</span></div>
     </aside>
   </div>
   <dialog class="workspace-modal practice-result" id="practice-result" aria-labelledby="practice-result-title"><span class="workspace-modal-symbol" aria-hidden="true">✓</span><h2 id="practice-result-title">Practice review</h2><div id="practice-result-content"></div><button class="pill primary" data-close-practice>Close</button></dialog>
+  <dialog class="workspace-modal workspace-information" id="workspace-info" aria-labelledby="workspace-info-title"><span class="workspace-modal-symbol" aria-hidden="true">i</span><h2 id="workspace-info-title"></h2><div id="workspace-info-content"></div><button class="pill primary" data-close-workspace-info>Got it</button></dialog>
   <div id="workspace-wallet-context" hidden></div>
 </body>
 </html>

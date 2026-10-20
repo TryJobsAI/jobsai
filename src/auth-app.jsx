@@ -66,14 +66,13 @@ function Auth() {
     <section className="jobsai-auth-card" aria-labelledby="auth-title">
       <span className="eyebrow">SECURE WALLET SIGN-IN</span>
       <h1 id="auth-title">Your work starts here.</h1>
-      <p>Connect your wallet to see funded jobs and claim work on Robinhood Chain.</p>
       <div className="jobsai-auth-connect"><ConnectButton accountStatus="address" chainStatus="icon" showBalance={false} /></div>
       {isConnected && chainId === robinhood.id && !busy && !transitioning && attemptedAddress.current === '' && <button className="jobsai-claim" onClick={() => { attemptedAddress.current = address || ''; if (address) authenticate(address); }}>Continue to JobsAI</button>}
-      <small>Wallet sign-in uses a message only. It does not move funds.</small>
+      <button className="text-info-button" onClick={() => setFeedback({ title: 'About wallet sign-in', message: 'Connect your wallet to access funded jobs. JobsAI asks you to sign a message to verify your address; sign-in does not send a transaction or move funds.', kind: 'info' })}>Wallet sign-in details</button>
     </section>
     <footer><a href="index.html">← Back to JobsAI</a><span>Robinhood Chain · ETH and USDG jobs</span></footer>
     {transitioning && <div className="jobsai-landscape-transition" aria-label="Opening your JobsAI dashboard"><div className="jobsai-landscape-sky"><span className="jobsai-landscape-sun"/><span className="jobsai-landscape-mountain mountain-back"/><span className="jobsai-landscape-mountain mountain-front"/><span className="jobsai-landscape-ground"/><span className="jobsai-landscape-path"/></div><strong>Welcome to JobsAI</strong></div>}
-    {feedback && !transitioning && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="auth-modal-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : '!'}</span><h2 id="auth-modal-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && (feedback.action ? <button className="pill primary" onClick={() => { setFeedback(null); switchChain({ chainId: robinhood.id }); }}>Switch to Robinhood Chain</button> : <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>)}</section></div>}
+    {feedback && !transitioning && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="auth-modal-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="auth-modal-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && (feedback.action ? <button className="pill primary" onClick={() => { setFeedback(null); switchChain({ chainId: robinhood.id }); }}>Switch to Robinhood Chain</button> : <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>)}</section></div>}
   </main>;
 }
 
