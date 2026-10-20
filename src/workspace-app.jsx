@@ -142,7 +142,7 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
       return;
     }
     setSaving(true);
-    setFeedback({ title: 'Confirm funding in your wallet', message: `Send exactly ${job.amount} ${job.asset} to this job’s escrow address. JobsAI will verify the transaction before listing the job.`, kind: 'loading' });
+    setFeedback({ title: 'Confirm funding in your wallet', message: `Review and approve the transaction in your wallet. Exactly ${job.amount} ${job.asset} will be deducted from your wallet and transferred to this job’s escrow address. Once the deposit is confirmed and verified, the job will be listed for workers to claim.`, kind: 'loading' });
     let hash = job.pendingFundingHash;
     try {
       if (!hash && job.asset === 'ETH') hash = await sendTransactionAsync({ to: job.escrowAddress, value: BigInt(job.amountRaw), chainId: robinhood.id });
