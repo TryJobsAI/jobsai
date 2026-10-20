@@ -42,8 +42,16 @@ export function validateSubmissionImage(bytes: Buffer, contentType: string): Ima
   return contentType as ImageContentType;
 }
 
+export function createCloudinaryImageFile(bytes: Buffer, contentType: string, publicId: string) {
+  const validType = validateSubmissionImage(bytes, contentType);
+  const extension: Record<ImageContentType, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" };
+  const imageData = new Uint8Array(bytes.length);
+  imageData.set(bytes);
+  return new File([imageData.buffer], `${publicId}.${extension[validType]}`, { type: validType });
+}
+
 export async function uploadSubmissionImage(bytes: Buffer, contentType: string, jobId: string) {
-  validateSubmissionImage(bytes, contentType);
+  const validType = validateSubmissionImage(bytes, contentType);
   const { cloudName, apiKey, apiSecret } = cloudinaryCredentials();
   const timestamp = Math.floor(Date.now() / 1000);
   const folder = `jobsai/submissions/${jobId}`;
@@ -51,9 +59,7 @@ export async function uploadSubmissionImage(bytes: Buffer, contentType: string, 
   const signatureBase = `folder=${folder}&public_id=${publicId}&timestamp=${timestamp}${apiSecret}`;
   const signature = createHash("sha1").update(signatureBase).digest("hex");
   const form = new FormData();
-  const imageData = new Uint8Array(bytes.length);
-  imageData.set(bytes);
-  form.append("file", new Blob([imageData.buffer], { type: contentType }));
+  form.append("file", createCloudinaryImageFile(bytes, validType, publicId));
   form.append("api_key", apiKey);
   form.append("timestamp", String(timestamp));
   form.append("folder", folder);

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { validateSubmissionImage } from "../src/media.js";
+import { createCloudinaryImageFile, validateSubmissionImage } from "../src/media.js";
 
 function expectApiError(run: () => unknown, status: number, code: string) {
   try { run(); } catch (error) { expect(error).toMatchObject({ status, code }); return; }
@@ -12,6 +12,12 @@ describe("submission image validation", () => {
     expect(validateSubmissionImage(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), "image/png")).toBe("image/png");
     expect(validateSubmissionImage(Buffer.from("RIFF0000WEBP"), "image/webp")).toBe("image/webp");
     expect(validateSubmissionImage(Buffer.from("GIF89a"), "image/gif")).toBe("image/gif");
+  });
+
+  test("keeps an explicit filename on the Cloudinary multipart file field", () => {
+    const file = createCloudinaryImageFile(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), "image/png", "submission-test");
+    expect(file.name).toBe("submission-test.png");
+    expect(file.type).toBe("image/png");
   });
 
   test("rejects video, mismatched image content, empty files, and files over 5 MB", () => {
