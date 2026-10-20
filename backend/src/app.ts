@@ -7,6 +7,8 @@ import { db } from "./db/index.js";
 import { jobsRouter, teamJobsRouter } from "./jobs.js";
 import { ApiError, asyncRoute, errorHandler } from "./http.js";
 import { reconcileSettlements } from "./settlement.js";
+import { IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES, uploadSubmissionImage } from "./media.js";
+import { assertCanSubmit } from "./lifecycle.js";
 
 const app = express();
 app.set("trust proxy", config.TRUST_PROXY);
@@ -44,6 +46,20 @@ cronRouter.post("/settle", asyncRoute(async (request, response) => {
 }));
 
 app.use("/v1/auth", authRouter);
+app.post(
+  "/v1/media/images",
+  requireAuth,
+  express.raw({ type: [...IMAGE_CONTENT_TYPES], limit: MAX_IMAGE_BYTES }),
+  asyncRoute(async (request, response) => {
+    if (!Buffer.isBuffer(request.body)) throw new ApiError(415, "unsupported_image_type", "Upload a JPEG, PNG, WebP, or GIF image. Video files are not accepted.");
+    const jobId = z.string().uuid().parse(request.query.jobId);
+    const job = await db.query<{ doer_id: string | null; status: string }>("SELECT doer_id,status FROM jobs WHERE id=$1", [jobId]);
+    if (!job.rowCount) throw new ApiError(404, "job_not_found", "This job does not exist.");
+    assertCanSubmit(job.rows[0], request.auth!.userId);
+    const result = await uploadSubmissionImage(request.body, request.header("content-type")?.split(";")[0].trim().toLowerCase() || "", jobId);
+    response.status(201).json({ data: result });
+  }),
+);
 app.use("/v1/jobs", jobsRouter);
 app.use("/v1/team", teamJobsRouter);
 app.use("/v1/cron", cronRouter);

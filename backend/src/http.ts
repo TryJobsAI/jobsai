@@ -22,6 +22,10 @@ export function errorHandler(
   response: Response,
   _next: NextFunction,
 ) {
+  if (error && typeof error === "object" && "status" in error && error.status === 413) {
+    response.status(413).json({ error: { code: "request_too_large", message: "The request is too large." } });
+    return;
+  }
   if (error instanceof ApiError) {
     response.status(error.status).json({ error: { code: error.code, message: error.message } });
     return;

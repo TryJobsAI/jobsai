@@ -26,6 +26,10 @@ const env = z
     GAS_WALLET_PRIVATE_KEY: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
     CRON_SECRET: z.string().min(32),
     TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(1),
+    CLOUDINARY_URL: optionalString,
+    CLOUDINARY_API_KEY: optionalString,
+    CLOUDINARY_API_SECRET: optionalString,
+    CLOUDINARY_CLOUD_NAME: optionalString,
   })
   .parse(process.env);
 

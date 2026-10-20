@@ -21,7 +21,7 @@ function InformationDialog({ info, onClose }) {
   </section></div>;
 }
 
-function WorkflowDialog({ dialog, onClose, onSubmit, busy }) {
+function WorkflowDialog({ dialog, onClose, onSubmit, onVideoHelp, busy }) {
   if (!dialog) return null;
   const { mode, job } = dialog;
   if (mode === 'submit' || mode === 'revision' || mode === 'dispute') {
@@ -30,7 +30,7 @@ function WorkflowDialog({ dialog, onClose, onSubmit, busy }) {
     return <div className="workspace-overlay"><section className="workspace-modal workspace-information workflow-dialog" role="dialog" aria-modal="true" aria-labelledby="workflow-dialog-title">
       <span className="workspace-modal-symbol" aria-hidden="true">{isSubmit ? '↗' : 'i'}</span><h2 id="workflow-dialog-title">{title}</h2><p>{job.title}</p>
       <form onSubmit={onSubmit}>
-        {isSubmit ? <><label>Work summary<textarea name="summary" required maxLength="10000" rows="3" /></label><label>Deliverable details or link<textarea name="deliverable" required maxLength="100000" rows="4" /></label><label>Evidence links, one per line (optional)<textarea name="evidence" rows="2" /></label></> : <label>{mode === 'revision' ? 'What needs to change?' : 'Describe the dispute'}<textarea name="message" required maxLength="10000" rows="5" /></label>}
+        {isSubmit ? <><label>Work summary<textarea name="summary" required maxLength="10000" rows="3" /></label><label>Deliverable details or link<textarea name="deliverable" required maxLength="100000" rows="4" /></label><label>Attach images<input className="submission-image-input" type="file" name="images" accept="image/jpeg,image/png,image/webp,image/gif" multiple /></label><button type="button" className="text-info-button video-upload-help" onClick={onVideoHelp}>Submitting a video?</button><label>Evidence links, one per line (optional)<textarea name="evidence" rows="2" /></label></> : <label>{mode === 'revision' ? 'What needs to change?' : 'Describe the dispute'}<textarea name="message" required maxLength="10000" rows="5" /></label>}
         <div className="workflow-dialog-actions"><button type="button" className="pill outline" onClick={onClose} disabled={busy}>Cancel</button><button className="pill primary" type="submit" disabled={busy}>{busy ? 'Submitting…' : isSubmit ? 'Submit work' : mode === 'revision' ? 'Send revision request' : 'Open dispute'}</button></div>
       </form>
     </section></div>;
@@ -50,6 +50,7 @@ function MyWork({ session, walletAddress }) {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [dialog, setDialog] = useState(null);
+  const [mediaInfo, setMediaInfo] = useState(null);
 
   async function refresh(showLoading = true) {
     if (showLoading) setFeedback({ title: 'Refreshing your work', message: 'Loading jobs connected to this wallet…', kind: 'loading' });
@@ -108,13 +109,43 @@ function MyWork({ session, walletAddress }) {
     const form = new FormData(event.currentTarget);
     const job = dialog.job;
     if (dialog.mode === 'submit') {
-      const evidence = String(form.get('evidence') || '').split('\n').map(value => value.trim()).filter(Boolean);
-      void doAction('Submitting your work', 'Saving this submission to the job history…', () => JobsAIAPI.submitWork(job.id, { summary: form.get('summary'), deliverable: form.get('deliverable'), evidence }, session.token), 'Work submitted', 'Your submission is saved. The client can review it and accept it or request a revision.');
+      const images = form.getAll('images').filter(file => file instanceof File && file.size > 0);
+      const links = String(form.get('evidence') || '').split('\n').map(value => value.trim()).filter(Boolean);
+      if (images.length > 5 || images.some(file => !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type) || file.size > 5 * 1024 * 1024)) {
+        setDialog(null);
+        setFeedback({ title: 'Check the attached images', message: 'Attach up to five JPEG, PNG, WebP, or GIF images. Each image must be 5 MB or smaller.', kind: 'error' });
+        return;
+      }
+      if (links.length + images.length > 20) {
+        setDialog(null);
+        setFeedback({ title: 'Too many evidence files', message: 'A submission can include up to 20 image and evidence links combined.', kind: 'error' });
+        return;
+      }
+      void submitWork(job, form, images, links);
     } else if (dialog.mode === 'revision') {
       void doAction('Sending revision request', 'Adding the requested changes to the job history…', () => JobsAIAPI.requestRevision(job.id, form.get('message'), session.token), 'Revision requested', 'The worker can now submit another version. Earlier submissions remain in the job history.');
     } else {
       void doAction('Opening dispute', 'Locking the job while the team reviews its history…', () => JobsAIAPI.openDispute(job.id, form.get('message'), session.token), 'Dispute opened', 'The job is locked pending team review.');
     }
+  }
+
+  async function submitWork(job, form, images, links) {
+    setBusy(true);
+    setDialog(null);
+    try {
+      const imageUrls = [];
+      for (let index = 0; index < images.length; index++) {
+        setFeedback({ title: 'Uploading submission images', message: `Uploading image ${index + 1} of ${images.length} to secure media storage…`, kind: 'loading' });
+        const uploaded = await JobsAIAPI.uploadImage(images[index], job.id, session.token);
+        imageUrls.push(uploaded.data.url);
+      }
+      setFeedback({ title: 'Submitting your work', message: 'Saving your submission and attached media to the job history…', kind: 'loading' });
+      await JobsAIAPI.submitWork(job.id, { summary: form.get('summary'), deliverable: form.get('deliverable'), evidence: [...links, ...imageUrls] }, session.token);
+      await refresh(false);
+      setFeedback({ title: 'Work submitted', message: 'Your submission and image attachments are saved. The client can review them and accept the work or request a revision.', kind: 'success' });
+    } catch (error) {
+      setFeedback({ title: 'Submission could not be completed', message: error.message || 'JobsAI could not upload or submit this work.', kind: 'error' });
+    } finally { setBusy(false); }
   }
 
   const statusLabels = { in_progress: 'In progress', revision_requested: 'Revision requested', submitted: 'Submitted', disputed: 'Disputed', settlement_pending: 'Settlement pending', completed: 'Completed', refunded: 'Refunded' };
@@ -133,7 +164,8 @@ function MyWork({ session, walletAddress }) {
       </div></article>;
     })}</div>
     {feedback && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="my-work-feedback-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="my-work-feedback-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
-    <WorkflowDialog dialog={dialog} onClose={() => setDialog(null)} onSubmit={submitDialog} busy={busy} />
+    <WorkflowDialog dialog={dialog} onClose={() => setDialog(null)} onSubmit={submitDialog} onVideoHelp={() => setMediaInfo({ title: 'Submitting a video', paragraphs: ['Image attachments are uploaded to JobsAI’s Cloudinary media storage. JobsAI accepts JPEG, PNG, WebP, and GIF images up to 5 MB each, with a maximum of five images per submission.', 'For video work, upload the video to cloud storage such as Cloudinary, Google Drive, Dropbox, or an unlisted video host. Set access so the client can view it, then paste the share link into Evidence links.'] })} busy={busy} />
+    <InformationDialog info={mediaInfo} onClose={() => setMediaInfo(null)} />
   </section>;
 }
 

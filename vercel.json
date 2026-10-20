@@ -18,6 +18,10 @@
     {
       "source": "/api/jobsai/v1/jobs/:path*",
       "destination": "https://jobsai-api.onrender.com/v1/jobs/:path*"
+    },
+    {
+      "source": "/api/jobsai/v1/media/:path*",
+      "destination": "https://jobsai-api.onrender.com/v1/media/:path*"
     }
   ]
 }

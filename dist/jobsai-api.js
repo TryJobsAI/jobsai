@@ -2,16 +2,17 @@
 (() => {
   const API_PREFIX = '/api/jobsai';
 
-  async function request(path, { token, method = 'GET', body } = {}) {
+  async function request(path, { token, method = 'GET', body, contentType } = {}) {
     let response;
+    const rawBody = body instanceof ArrayBuffer || ArrayBuffer.isView(body) || (typeof Blob !== 'undefined' && body instanceof Blob);
     try {
       response = await fetch(`${API_PREFIX}${path}`, {
         method,
         headers: {
-          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          ...(body === undefined ? {} : { 'Content-Type': contentType || (rawBody ? 'application/octet-stream' : 'application/json') }),
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined ? undefined : rawBody ? body : JSON.stringify(body),
         credentials: 'same-origin',
         cache: 'no-store',
       });
@@ -43,5 +44,6 @@
     requestRevision: (jobId, feedback, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/revisions`, { method: 'POST', token, body: { feedback } }),
     acceptWork: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/accept`, { method: 'POST', token, body: {} }),
     openDispute: (jobId, reason, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/disputes`, { method: 'POST', token, body: { reason } }),
+    uploadImage: async (file, jobId, token) => request(`/v1/media/images?jobId=${encodeURIComponent(jobId)}`, { method: 'POST', token, body: await file.arrayBuffer(), contentType: file.type }),
   });
 })();
