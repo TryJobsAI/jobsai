@@ -4,6 +4,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/chunks/:path*",
+      "destination": "/wallet/chunks/:path*"
+    },
+    {
       "source": "/api/jobsai/v1/auth/:path*",
       "destination": "https://jobsai-api.onrender.com/v1/auth/:path*"
     },
