@@ -1,0 +1,46 @@
+# JobsAI security
+
+This page explains how JobsAI handles job payments, who can act on a job, and what protections and limits are currently in place. JobsAI is an early release, and some protections found in mature payment services are not available yet.
+
+## How job payments work
+
+Each job has its own digital wallet. When a client funds a job, the payment goes to that wallet in the asset the client selected: ETH or USDG. JobsAI does not convert between them.
+
+The JobsAI service holds the encrypted keys needed to send money out of those wallets. It sends payment to the worker after the client accepts the work, or sends a refund after an eligible cancellation or team decision. JobsAI also pays the network fees for these transfers from a separate company wallet.
+
+This means payments rely on JobsAI's systems and key protection. No separate program on the blockchain controls when funds can move. If the service or its key storage were compromised, job funds could be at risk.
+
+## Who can act on a job
+
+- **Client:** Creates and funds a job, can cancel it before a worker claims it, reviews the work, requests changes, accepts it, or asks for a team review.
+- **Worker:** Claims an available funded job, submits work and revisions, can return the job before submitting work, or asks for a team review.
+- **JobsAI reviewer:** Signs in with an approved team wallet and the team password, reviews the job history, and chooses whether the payment goes to the worker or back to the client. The current version allows one reviewer to make that decision.
+
+When a dispute is opened, the job is paused while it awaits review. The reviewer can consider the original task, requirements, submissions, revision requests, reason for the dispute, and job history.
+
+JobsAI is developing an AI tool to help organize and compare those records. A person on the JobsAI team makes the decision. The AI tool is not connected to the live payment process and cannot send a payment or refund.
+
+## Protections in place
+
+- A client can cancel a funded job only before a worker claims it. This starts a refund to the client, which can take time to complete. After a worker claims the job, disagreements go through team review.
+- One wallet can claim up to two active jobs at a time. This limit does not prevent someone from using multiple wallets, and claims do not expire automatically.
+- Only the client and assigned worker can take part in the job's normal actions. The service checks who is acting and whether the requested action is allowed at that point in the job.
+- The service checks that a funding payment used the right network, payment type (ETH or USDG), amount, and job wallet before making the job available.
+- Earlier submissions and job actions are kept in the job history. Private submission and dispute text is encrypted in the database.
+- Team review requires an approved JobsAI reviewer wallet and the team password. Team-review access lasts up to eight hours in a browser session. Changing the team password ends existing team-review sessions. A copied sign-in token may remain usable until it expires.
+
+## Current limits
+
+- A transfer can be delayed or fail. Some delays need help from the JobsAI operations team; the system cannot yet automatically recover every stuck payment.
+- Sending the wrong asset, amount, network, or destination does not trigger an automatic refund. Check the payment details carefully before sending.
+- JobsAI does not yet automatically return funds when a job sits untouched for too long, or automatically remove old job records. Submission records remain stored. Uploaded images follow the retention settings of JobsAI's image storage provider.
+- No independent security firm has reviewed JobsAI yet. Payments are managed by the JobsAI service and are not governed by a separate blockchain payment contract.
+- The one-wallet claim limit cannot stop someone from claiming jobs with several different wallets.
+
+## Keeping accounts and funds safe
+
+Use the Robinhood Chain test network while developing. JobsAI operators should keep service passwords, wallet keys, and encryption keys in the hosting provider's secure settings, use different keys for development and live systems, limit who can access payment systems, and watch for delayed transfers and low fee-wallet balances. Losing the encryption key could make funds in active jobs inaccessible.
+
+## Report a security issue
+
+Email **tryjobsai@atomicmail.io** with a clear description of the issue, where it occurs, and steps to reproduce it. Do not include private wallet keys or send transactions that move real funds.
