@@ -21,17 +21,20 @@ export function buildPayoutTransaction(settlement: Pick<Settlement, "asset" | "r
       functionName: "transfer",
       args: [settlement.recipient, BigInt(settlement.amount_raw)],
     }),
-    gas: settlement.asset === "eth" ? 21_000n : 100_000n,
   };
 }
 
-export function escrowGasReserve(gasPrice: bigint, asset: "eth" | "usdg") {
-  const payoutGas = asset === "eth" ? 21_000n : 100_000n;
-  return gasPrice * (payoutGas + 21_000n + 30_000n) * 2n;
+export function gasLimitWithBuffer(estimatedGas: bigint, bufferBps = 2_000n) {
+  if (estimatedGas <= 0n || bufferBps < 0n) throw new Error("Gas estimate must be positive and buffer non-negative.");
+  return (estimatedGas * (10_000n + bufferBps) + 9_999n) / 10_000n;
 }
 
-export function escrowSweepAmount(balance: bigint, gasPrice: bigint) {
-  const amount = balance - gasPrice * 21_000n;
+export function escrowGasReserve(gasPrice: bigint, gasTopUpLimit: bigint, payoutGasLimit: bigint, sweepGasLimit: bigint) {
+  return gasPrice * (gasTopUpLimit + payoutGasLimit + sweepGasLimit) * 2n;
+}
+
+export function escrowSweepAmount(balance: bigint, gasPrice: bigint, sweepGasLimit: bigint) {
+  const amount = balance - gasPrice * sweepGasLimit;
   return amount > 0n ? amount : 0n;
 }
 
@@ -102,13 +105,26 @@ export async function processSettlement(jobId: string) {
     let settlement = await load(jobId);
     if (!settlement) throw new Error("Settlement record is missing.");
     const escrow = loadEscrowAccount(jobId, settlement.encrypted_private_key);
-    const gasPrice = await publicClient.getGasPrice();
-    const sweepGas = 21_000n;
+    const gasPrice = (await publicClient.getGasPrice()) * 3n / 2n;
+    const payoutRequest = buildPayoutTransaction(settlement);
+    const [gasTopUpEstimate, payoutEstimate, sweepEstimate] = await Promise.all([
+      settlement.gas_signed_tx ? null : publicClient.estimateGas({ account: gasAccount.address, to: settlement.escrow_address as Address, value: 0n }),
+      settlement.payout_signed_tx ? null : publicClient.estimateGas({ account: escrow.address, ...payoutRequest }),
+      settlement.sweep_signed_tx ? null : publicClient.estimateGas({ account: escrow.address, to: gasWalletAddress, value: 0n }),
+    ]);
+    const gasTopUpLimit = gasTopUpEstimate === null ? null : gasLimitWithBuffer(gasTopUpEstimate);
+    const payoutGasLimit = payoutEstimate === null ? null : gasLimitWithBuffer(payoutEstimate);
+    const sweepGasLimit = sweepEstimate === null ? null : gasLimitWithBuffer(sweepEstimate);
 
     {
-      const reserve = escrowGasReserve(gasPrice, settlement.asset);
+      const reserve = settlement.gas_signed_tx ? 0n : escrowGasReserve(
+        gasPrice,
+        gasTopUpLimit!,
+        payoutGasLimit!,
+        sweepGasLimit!,
+      );
       const gasTx = await ensureStageTx(settlement, "gas", {
-        to: settlement.escrow_address, value: reserve, gas: 21_000n, gasPrice,
+        to: settlement.escrow_address, value: reserve, gas: gasTopUpLimit ?? 1n, gasPrice,
       }, gasAccount);
       await sendPersisted(gasTx.raw, gasTx.hash);
       await db.query("UPDATE job_settlements SET phase='payout',updated_at=now() WHERE job_id=$1", [jobId]);
@@ -118,6 +134,7 @@ export async function processSettlement(jobId: string) {
     {
       const payout = await ensureStageTx(settlement, "payout", {
         ...buildPayoutTransaction(settlement),
+        gas: payoutGasLimit ?? 1n,
         gasPrice,
       }, escrow);
       await sendPersisted(payout.raw, payout.hash);
@@ -129,10 +146,10 @@ export async function processSettlement(jobId: string) {
       await sendPersisted(settlement.sweep_signed_tx, settlement.sweep_tx_hash);
     } else {
       const balance = await publicClient.getBalance({ address: settlement.escrow_address });
-      const sweepValue = escrowSweepAmount(balance, gasPrice);
+      const sweepValue = escrowSweepAmount(balance, gasPrice, sweepGasLimit!);
       if (sweepValue > 0n) {
         const sweep = await ensureStageTx(settlement, "sweep", {
-          to: gasWalletAddress, value: sweepValue, gas: sweepGas, gasPrice,
+          to: gasWalletAddress, value: sweepValue, gas: sweepGasLimit ?? 1n, gasPrice,
         }, escrow);
         await sendPersisted(sweep.raw, sweep.hash);
       }

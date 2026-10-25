@@ -24,7 +24,12 @@
     let payload;
     try { payload = await response.json(); }
     catch { throw new Error('JobsAI returned an unreadable response.'); }
-    if (!response.ok) throw new Error(payload?.error?.message || 'The request could not be completed.');
+    if (!response.ok) {
+      const error = new Error(payload?.error?.message || 'The request could not be completed.');
+      error.code = payload?.error?.code;
+      error.status = response.status;
+      throw error;
+    }
     return payload;
   }
 
@@ -33,6 +38,7 @@
     myJobs: token => request('/v1/jobs/mine', { token }),
     createJob: (input, token) => request('/v1/jobs', { method: 'POST', token, body: input }),
     fundJob: (jobId, transactionHash, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/fund`, { method: 'POST', token, body: { transactionHash } }),
+    cancelJob: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST', token, body: {} }),
     issueNonce: address => request('/v1/auth/nonce', { method: 'POST', body: { address } }),
     verifyWallet: credentials => request('/v1/auth/verify', { method: 'POST', body: credentials }),
     logout: token => request('/v1/auth/logout', { method: 'POST', token }),
@@ -44,6 +50,12 @@
     requestRevision: (jobId, feedback, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/revisions`, { method: 'POST', token, body: { feedback } }),
     acceptWork: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/accept`, { method: 'POST', token, body: {} }),
     openDispute: (jobId, reason, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/disputes`, { method: 'POST', token, body: { reason } }),
+    teamLogin: (password, token) => request('/v1/team/auth/login', { method: 'POST', token, body: { password } }),
+    teamStatus: token => request('/v1/team/auth/status', { token }),
+    teamLogout: token => request('/v1/team/auth/logout', { method: 'POST', token, body: {} }),
+    teamDisputes: token => request('/v1/team/disputes', { token }),
+    teamDispute: (jobId, token) => request(`/v1/team/disputes/${encodeURIComponent(jobId)}`, { token }),
+    resolveTeamDispute: (jobId, outcome, note, token) => request(`/v1/team/disputes/${encodeURIComponent(jobId)}/resolve`, { method: 'POST', token, body: { outcome, note } }),
     uploadImage: async (file, jobId, token) => request(`/v1/media/images?jobId=${encodeURIComponent(jobId)}`, { method: 'POST', token, body: await file.arrayBuffer(), contentType: file.type }),
   });
 })();

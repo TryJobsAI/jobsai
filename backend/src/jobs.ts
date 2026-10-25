@@ -3,7 +3,7 @@ import { Router } from "express";
 import type { PoolClient } from "pg";
 import { formatUnits } from "viem";
 import { z } from "zod";
-import { requireAuth, requireTeam } from "./auth.js";
+import { assertTeamPassword, clearTeamSessionCookie, requireAuth, requireTeam, requireTeamPassword, setTeamSessionCookie } from "./auth.js";
 import { config, teamWallets } from "./config.js";
 import { decryptPayload, encryptPayload, payloadDigest } from "./crypto.js";
 import { db } from "./db/index.js";
@@ -11,7 +11,7 @@ import { makeEscrowWallet, verifyJobFunding, type FundingTerms, type JobAsset } 
 import { ApiError, asyncRoute } from "./http.js";
 import { processSettlement } from "./settlement.js";
 import { createJobInputSchema, parseDeadline, parseJobAmount, submissionInputSchema } from "./job-input.js";
-import { assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertCanUnclaim, assertClaimable, assertDisputed, assertJobClient, assertParticipants, assertSettlementAllowed } from "./lifecycle.js";
+import { assertActiveClaimCapacity, assertCanCancelFundedJob, assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertCanUnclaim, assertClaimable, assertDisputed, assertJobClient, assertParticipants, assertSettlementAllowed } from "./lifecycle.js";
 
 export const jobsRouter = Router();
 const uuid = z.string().uuid();
@@ -249,6 +249,7 @@ jobsRouter.post(
     const client = await db.connect();
     try {
       await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [request.auth!.userId]);
       const locked = await client.query<{ status: string; client_id: string; deadline_at: Date | null }>(
         "SELECT status,client_id,deadline_at FROM jobs WHERE id=$1 FOR UPDATE",
         [id],
@@ -256,6 +257,11 @@ jobsRouter.post(
       const job = locked.rows[0];
       if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
       assertClaimable(job, request.auth!.userId);
+      const active = await client.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM jobs WHERE doer_id=$1 AND status IN ('in_progress','submitted','revision_requested','disputed','settlement_pending')",
+        [request.auth!.userId],
+      );
+      assertActiveClaimCapacity(Number(active.rows[0].count), config.MAX_ACTIVE_CLAIMS_PER_WALLET);
       await client.query("UPDATE jobs SET doer_id=$2,status='in_progress',claimed_at=now(),updated_at=now() WHERE id=$1", [
         id,
         request.auth!.userId,
@@ -269,6 +275,34 @@ jobsRouter.post(
     } finally {
       client.release();
     }
+  }),
+);
+
+jobsRouter.post(
+  "/:id/cancel",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const id = uuid.parse(request.params.id);
+    const client = await db.connect();
+    let result: { jobId: string; status: string; outcome: string };
+    try {
+      await client.query("BEGIN");
+      const selected = await client.query<{ client_id: string; status: string }>(
+        "SELECT client_id,status FROM jobs WHERE id=$1 FOR UPDATE", [id],
+      );
+      const job = selected.rows[0];
+      if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
+      assertCanCancelFundedJob(job, request.auth!.userId);
+      result = await createSettlement(id, request.auth!.userId, "client_cancellation", "refund_client", client);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+    response.status(202).json({ data: result });
+    void processSettlement(id).catch((error) => console.error(`Cancellation refund ${id} failed to start:`, error));
   }),
 );
 
@@ -471,7 +505,7 @@ jobsRouter.post(
   }),
 );
 
-async function createSettlement(jobId: string, actorId: string, cause: string, outcome: "pay_doer" | "refund_client", existingClient?: PoolClient) {
+async function createSettlement(jobId: string, actorId: string, cause: "client_acceptance" | "client_cancellation" | "team_dispute_resolution", outcome: "pay_doer" | "refund_client", existingClient?: PoolClient) {
   const client = existingClient ?? await db.connect();
   const ownsTransaction = !existingClient;
   try {
@@ -483,7 +517,7 @@ async function createSettlement(jobId: string, actorId: string, cause: string, o
     );
     const job = result.rows[0];
     if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
-    assertSettlementAllowed(job, actorId, cause as "client_acceptance" | "team_dispute_resolution", outcome);
+    assertSettlementAllowed(job, actorId, cause, outcome);
     const recipient = outcome === "pay_doer" ? job.doer_wallet! : job.client_wallet;
     await client.query("INSERT INTO job_settlements (job_id,outcome,recipient,amount_raw) VALUES ($1,$2,$3,$4)", [
       jobId,
@@ -492,7 +526,7 @@ async function createSettlement(jobId: string, actorId: string, cause: string, o
       job.amount_raw,
     ]);
     await client.query("UPDATE jobs SET status='settlement_pending',updated_at=now() WHERE id=$1", [jobId]);
-    await appendEvent(client, jobId, actorId, cause === "client_acceptance" ? "job.accepted" : "job.dispute_resolved", { outcome });
+    await appendEvent(client, jobId, actorId, cause === "client_acceptance" ? "job.accepted" : cause === "client_cancellation" ? "job.cancellation_requested" : "job.dispute_resolved", { outcome });
     if (ownsTransaction) await client.query("COMMIT");
     return { jobId, status: "settlement_pending", outcome };
   } catch (error) {
@@ -504,8 +538,20 @@ async function createSettlement(jobId: string, actorId: string, cause: string, o
 }
 
 export const teamJobsRouter = Router();
-teamJobsRouter.use(requireAuth);
-teamJobsRouter.use(requireTeam);
+teamJobsRouter.post("/auth/login", requireAuth, requireTeam, asyncRoute(async (request, response) => {
+  const input = z.object({ password: z.string().min(1).max(512) }).parse(request.body);
+  assertTeamPassword(input.password);
+  setTeamSessionCookie(response);
+  response.json({ data: { authenticated: true, expiresIn: 8 * 60 * 60 } });
+}));
+teamJobsRouter.get("/auth/status", requireAuth, requireTeam, requireTeamPassword, (_request, response) => {
+  response.json({ data: { authenticated: true } });
+});
+teamJobsRouter.post("/auth/logout", requireAuth, requireTeam, (_request, response) => {
+  clearTeamSessionCookie(response);
+  response.status(204).end();
+});
+teamJobsRouter.use(requireAuth, requireTeam, requireTeamPassword);
 
 teamJobsRouter.get("/disputes", asyncRoute(async (_request, response) => {
   const result = await db.query(

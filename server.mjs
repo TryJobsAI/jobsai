@@ -10,7 +10,7 @@ http.createServer(async(req,res)=>{
   try {
     const path=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
     if(path.startsWith('/api/jobsai/')){
-      const headers=new Headers();for(const name of ['accept','authorization','content-type','content-length']){const value=req.headers[name];if(typeof value==='string')headers.set(name,value);}
+      const headers=new Headers();for(const name of ['accept','authorization','cookie','content-type','content-length']){const value=req.headers[name];if(typeof value==='string')headers.set(name,value);}
       let body;if(!['GET','HEAD'].includes(req.method||'GET')){const uploadPath=new URL(req.url,'http://localhost').pathname==='/api/jobsai/v1/media/images';body=await readRequestBody(req,uploadPath?5*1024*1024:256*1024);}
       const upstreamRequest=new Request(new URL(req.url,'http://localhost:'+port),{method:req.method,headers,body:body?.length?body:undefined});
       const upstream=await proxyJobsAI(upstreamRequest);const responseBody=Buffer.from(await upstream.arrayBuffer());

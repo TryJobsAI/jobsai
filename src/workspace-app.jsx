@@ -17,7 +17,7 @@ function InformationDialog({ info, onClose }) {
     {info.paragraphs?.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
     {info.items?.length > 0 && <><h3>{info.itemsLabel || 'Details'}</h3><ul>{info.items.map((item, index) => <li key={index}>{item}</li>)}</ul></>}
     {info.code && <><h3>{info.codeLabel || 'Reference'}</h3><code>{info.code}</code></>}
-    <button className="pill primary" onClick={onClose}>Got it</button>
+    <div className="workflow-dialog-actions"><button className="pill outline" onClick={onClose}>{info.confirmLabel ? 'Keep job' : 'Got it'}</button>{info.onConfirm && <button className="pill primary" onClick={info.onConfirm}>{info.confirmLabel}</button>}</div>
   </section></div>;
 }
 
@@ -315,6 +315,19 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
     } finally { setSaving(false); }
   }
 
+  async function cancelFundedJob(job) {
+    setSaving(true);
+    setJobInfo(null);
+    setFeedback({ title: 'Starting refund', message: 'JobsAI is preparing the escrow refund to your connected wallet…', kind: 'loading' });
+    try {
+      await JobsAIAPI.cancelJob(job.id, session.token);
+      await loadJobs(false);
+      setFeedback({ title: 'Cancellation requested', message: 'The job is no longer available to claim. Its escrow refund is being processed onchain.', kind: 'success' });
+    } catch (error) {
+      setFeedback({ title: 'Could not cancel job', message: error.message || 'JobsAI could not start the escrow refund.', kind: 'error' });
+    } finally { setSaving(false); }
+  }
+
   return <div className="create-job-grid">
     <form className="create-job-form" noValidate onSubmit={createJob}>
       <div className="create-job-form-heading"><span className="eyebrow">JOB DETAILS</span><h2>Describe the work.</h2><button type="button" className="text-info-button" onClick={() => setJobInfo({ title: 'Write a clear job brief', paragraphs: ['Describe the task and expected output. Add acceptance criteria that make completion easy to review. You can set an optional deadline. Creating a job does not move funds; funding is a separate wallet approval.'] })}>Writing a clear brief</button></div>
@@ -329,6 +342,7 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
       <div className="created-jobs-list">{jobs.map(job => <article className="created-job-item" key={job.id}><div className="created-job-summary"><h3>{job.title}</h3><strong>{job.amount} {job.asset}</strong></div>
         <div className="created-job-actions"><button className="pill outline" onClick={() => setJobInfo({ title: job.title, paragraphs: [`Status: ${job.status.replaceAll('_', ' ')}.`, job.description, job.deadlineAt ? `Deadline: ${new Date(job.deadlineAt).toLocaleString()}` : 'No deadline provided.', ...(job.pendingFundingHash ? ['A transfer was sent. Verify it to publish the job; do not send funds again.'] : [])], itemsLabel: 'Acceptance criteria', items: job.acceptanceCriteria || [], code: job.status === 'awaiting_funding' ? job.escrowAddress : undefined, codeLabel: 'Escrow address' })}>View details</button>
           {job.status === 'awaiting_funding' && <button className="pill primary" onClick={() => fundJob(job)} disabled={saving}>{job.pendingFundingHash ? 'Verify deposit' : 'Fund job'}</button>}
+          {job.status === 'ready' && <button className="pill outline" onClick={() => setJobInfo({ title: 'Cancel this funded job?', paragraphs: [`${job.amount} ${job.asset} will be returned from escrow to your connected wallet. The job will be removed from the work board while the onchain refund processes.`], confirmLabel: 'Cancel job and refund', onConfirm: () => cancelFundedJob(job) })} disabled={saving}>Cancel job</button>}
         </div>
       </article>)}</div>
     </section>

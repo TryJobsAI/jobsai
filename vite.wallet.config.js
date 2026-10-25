@@ -10,7 +10,7 @@ export default defineConfig({
     emptyOutDir: false,
     cssCodeSplit: false,
     rollupOptions: {
-      input: { auth: 'src/auth-app.jsx', workspace: 'src/workspace-app.jsx' },
+      input: { auth: 'src/auth-app.jsx', workspace: 'src/workspace-app.jsx', team: 'src/team-app.jsx' },
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: 'chunks/[name]-[hash].js',

@@ -12,6 +12,20 @@ type SettlementJob = {
   status: string;
 };
 
+export function assertActiveClaimCapacity(activeClaims: number, maxActiveClaims: number) {
+  if (!Number.isInteger(activeClaims) || activeClaims < 0 || !Number.isInteger(maxActiveClaims) || maxActiveClaims < 1)
+    throw new Error("Claim capacity values must be non-negative integers with a positive limit.");
+  if (activeClaims >= maxActiveClaims)
+    throw new ApiError(409, "active_claim_limit", `You already have ${activeClaims} active claimed jobs. Complete or unclaim one before claiming more.`);
+}
+
+export function assertCanCancelFundedJob(job: { client_id: string; status: string }, actorId: string) {
+  if (job.client_id !== actorId)
+    throw new ApiError(403, "client_only", "Only the client can cancel this job.");
+  if (job.status !== "ready")
+    throw new ApiError(409, "job_not_cancellable", "A funded job can only be cancelled before a worker claims it.");
+}
+
 export function assertJobClient(clientWallet: string, actorWallet: string) {
   if (clientWallet.toLowerCase() !== actorWallet.toLowerCase())
     throw new ApiError(403, "client_only", "Only the job client can perform this action.");
@@ -66,12 +80,16 @@ export function assertDisputed(status: string) {
 export function assertSettlementAllowed(
   job: SettlementJob,
   actorId: string,
-  cause: "client_acceptance" | "team_dispute_resolution",
+  cause: "client_acceptance" | "client_cancellation" | "team_dispute_resolution",
   outcome: "pay_doer" | "refund_client",
 ) {
   if (cause === "client_acceptance") {
     if (job.client_id !== actorId) throw new ApiError(403, "client_only", "Only the client can accept work.");
     if (job.status !== "submitted") throw new ApiError(409, "job_not_accepting", "Only a submitted job can be accepted.");
+  } else if (cause === "client_cancellation") {
+    if (job.client_id !== actorId) throw new ApiError(403, "client_only", "Only the client can cancel this job.");
+    if (job.status !== "ready") throw new ApiError(409, "job_not_cancellable", "A funded job can only be cancelled before a worker claims it.");
+    if (outcome !== "refund_client") throw new ApiError(409, "invalid_cancellation_outcome", "Cancelling a job must refund the client.");
   } else {
     assertDisputed(job.status);
   }

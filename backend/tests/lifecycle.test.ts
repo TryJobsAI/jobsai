@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertCanUnclaim, assertClaimable,
+  assertActiveClaimCapacity, assertCanCancelFundedJob, assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertCanUnclaim, assertClaimable,
   assertDisputed, assertJobClient, assertParticipants, assertSettlementAllowed,
 } from "../src/lifecycle.js";
 
@@ -10,6 +10,23 @@ function expectCode(run: () => unknown, status: number, code: string) {
 }
 
 describe("job lifecycle rules", () => {
+  test("funded ready jobs can only be cancelled by their client and always refund", () => {
+    const ready = { client_id: "client", status: "ready", doer_id: null, doer_wallet: null };
+    expect(() => assertCanCancelFundedJob(ready, "client")).not.toThrow();
+    expectCode(() => assertCanCancelFundedJob(ready, "other"), 403, "client_only");
+    for (const status of ["in_progress", "submitted", "disputed", "completed", "settlement_pending"])
+      expectCode(() => assertCanCancelFundedJob({ ...ready, status }, "client"), 409, "job_not_cancellable");
+    expect(() => assertSettlementAllowed(ready, "client", "client_cancellation", "refund_client")).not.toThrow();
+    expectCode(() => assertSettlementAllowed(ready, "client", "client_cancellation", "pay_doer"), 409, "invalid_cancellation_outcome");
+  });
+
+  test("wallet claim capacity blocks additional active jobs at the configured limit", () => {
+    expect(() => assertActiveClaimCapacity(0, 2)).not.toThrow();
+    expect(() => assertActiveClaimCapacity(1, 2)).not.toThrow();
+    expectCode(() => assertActiveClaimCapacity(2, 2), 409, "active_claim_limit");
+    expectCode(() => assertActiveClaimCapacity(4, 2), 409, "active_claim_limit");
+  });
+
   test("funding actions belong to client and claiming requires a ready, unexpired job", () => {
     expect(() => assertJobClient("0xAbC", "0xaBc")).not.toThrow();
     expectCode(() => assertJobClient("client", "other"), 403, "client_only");
