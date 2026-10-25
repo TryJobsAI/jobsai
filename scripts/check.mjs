@@ -10,7 +10,8 @@ for(const file of await walk(root)){
  for(const m of source.matchAll(/(?:src|href|poster)="([^"]+)"/g)){
    const url=m[1];if(/^(?:https?:|mailto:|tel:|data:)/.test(url))continue;
    const [pathname,fragment]=url.split('#');const clean=pathname.split('?')[0];
-   const target=clean?resolve(dirname(file),clean):file;
+   const routeFiles={'/whitepaper':'whitepaper.html','/roadmap':'roadmap.html'};
+   const target=clean?(routeFiles[clean]?resolve(root,routeFiles[clean]):clean.startsWith('/')?resolve(root,`.${clean}`):resolve(dirname(file),clean)):file;
    try{await access(target);}catch{errors.push(`Missing asset or route: ${url} in ${file}`);continue;}
    if(fragment&&target.endsWith('.html')){const html=target===file?source:await readFile(target,'utf8');if(!html.includes(`id="${fragment}"`))errors.push(`Missing anchor ${url}`);}
    checked++;

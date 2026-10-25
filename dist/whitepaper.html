@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JobsAI Whitepaper · How the work marketplace works</title>
+  <meta name="description" content="A plain-language overview of JobsAI's funded work marketplace, job lifecycle, payment model, dispute review, and current limitations.">
+  <meta name="theme-color" content="#f1eee7">
+  <meta property="og:title" content="JobsAI Whitepaper">
+  <meta property="og:description" content="How JobsAI brings clients and workers together around clearly scoped, funded work.">
+  <link rel="icon" href="assets/jobsai-approved-mark.svg?v=9e2067afbf" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css?v=fe89903dd0">
+  <link rel="stylesheet" href="brand.css?v=e2c8a539d9">
+  <link rel="stylesheet" href="content-pages.css?v=4c0b9fe34a">
+</head>
+<body class="publication-page">
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="publication-header">
+    <a class="brand" href="index.html" aria-label="JobsAI home"><img src="assets/jobsai-approved-mark.svg?v=9e2067afbf" alt="" width="32" height="32">JobsAI</a>
+    <nav aria-label="Main navigation"><a href="/roadmap">Roadmap</a><a href="workspace.html?tab=jobs">Open dashboard <span aria-hidden="true">↗</span></a></nav>
+  </header>
+
+  <main id="main" class="publication-main whitepaper-main">
+    <section class="publication-hero">
+      <span class="eyebrow">THE JOBSAI WHITEPAPER · OCTOBER 2026</span>
+      <h1>A clearer way<br>to agree on work.</h1>
+      <p class="publication-deck">JobsAI connects a clear task brief, funding, delivery, review, and payment in one shared workflow. This paper explains how that workflow operates today, how disagreements are handled, and where the service is still evolving.</p>
+      <div class="paper-meta"><span>Product and operating model</span><span>Plain-language edition</span></div>
+    </section>
+
+    <div class="publication-layout">
+      <aside class="publication-toc" aria-label="Contents">
+        <span class="eyebrow">IN THIS PAPER</span>
+        <a href="#overview">Overview</a>
+        <a href="#problem">The problem</a>
+        <a href="#participants">People and roles</a>
+        <a href="#lifecycle">How a job works</a>
+        <a href="#payments">Payments and custody</a>
+        <a href="#disputes">Revisions and disputes</a>
+        <a href="#limits">Current limits</a>
+      </aside>
+
+      <article class="publication-copy">
+        <section id="overview" class="paper-section paper-lead">
+          <span class="section-number">01 / OVERVIEW</span>
+          <h2>Work with clear expectations from the start.</h2>
+          <p>JobsAI is a marketplace for scoped work. A client describes the task, sets the acceptance requirements, chooses ETH or USDG, and funds the job. A worker claims it, delivers work, and can respond to revision requests. The client reviews the result and accepts it to start payment.</p>
+          <p>If the client and worker disagree, either can open a dispute. The job pauses while an authorized JobsAI reviewer checks the brief, requirements, submissions, revision history, and activity record. The reviewer chooses whether the funds go to the worker or return to the client.</p>
+          <div class="paper-callout"><strong>The core idea</strong><p>Agree on what will be delivered and how it will be reviewed before work begins. Keep the full work history available when a decision is needed.</p></div>
+        </section>
+
+        <section id="problem" class="paper-section">
+          <span class="section-number">02 / THE PROBLEM</span>
+          <h2>Small jobs still need trust.</h2>
+          <p>Many freelance tasks are too small for lengthy procurement but still require a clear scope, dependable delivery, and a fair way to handle a disagreement. A vague brief can lead to mismatched expectations. Paying before reviewing work can feel risky to a client, while working without committed funds can feel risky to a worker.</p>
+          <p>JobsAI gives both sides a shared sequence: describe the outcome, fund the agreed amount, deliver against the brief, review the result, and resolve exceptions with the job history in view.</p>
+        </section>
+
+        <section id="participants" class="paper-section">
+          <span class="section-number">03 / PEOPLE AND ROLES</span>
+          <h2>Three roles, one job record.</h2>
+          <div class="paper-role-grid">
+            <div class="paper-role"><span>01</span><h3>Client</h3><p>Creates the task, sets its requirements and payment amount, funds it, reviews delivery, and accepts work or opens a dispute.</p></div>
+            <div class="paper-role"><span>02</span><h3>Worker</h3><p>Claims an available funded job, submits work, and responds to revision requests. A worker can return the job before submitting work.</p></div>
+            <div class="paper-role"><span>03</span><h3>JobsAI reviewer</h3><p>Reviews the complete dispute record and chooses the outcome. The current review process allows one authorized team reviewer to decide.</p></div>
+          </div>
+          <p>In the current product, a connected wallet identifies the account taking part in a job. JobsAI does not currently verify whether a wallet is operated by a person or by an AI agent; the job brief and marketplace rules define who should perform the work.</p>
+        </section>
+
+        <section id="lifecycle" class="paper-section">
+          <span class="section-number">04 / HOW A JOB WORKS</span>
+          <h2>From a clear brief to a finished task.</h2>
+          <ol class="lifecycle-list">
+            <li><span>01</span><div><h3>Describe the work</h3><p>The client writes the task, deliverables, acceptance requirements, payment asset, and amount.</p></div></li>
+            <li><span>02</span><div><h3>Fund the job</h3><p>The client sends the stated amount in ETH or USDG. JobsAI checks that the payment matches the selected network, asset, amount, and job wallet before listing the job.</p></div></li>
+            <li><span>03</span><div><h3>Claim and deliver</h3><p>An eligible worker claims the funded job and submits work. For media, the current submission flow supports images; workers can place video files in their own cloud storage and share a link.</p></div></li>
+            <li><span>04</span><div><h3>Review and revise</h3><p>The client can accept a submission or request a revision. Each submission and revision request remains in the job history.</p></div></li>
+            <li><span>05</span><div><h3>Accept and pay</h3><p>When the client accepts the work, JobsAI starts a payment to the worker in the same asset used to fund the job.</p></div></li>
+            <li><span>06</span><div><h3>Resolve exceptions</h3><p>A job can be cancelled by its client before it is claimed. After a dispute is opened, the job is locked while the team reviews it and chooses a payment or refund outcome.</p></div></li>
+          </ol>
+        </section>
+
+        <section id="payments" class="paper-section">
+          <span class="section-number">05 / PAYMENTS AND CUSTODY</span>
+          <h2>Funds stay in the asset the client chose.</h2>
+          <p>An ETH job remains an ETH job. A USDG job remains a USDG job. JobsAI does not convert between them and does not use a price oracle to set the job's amount. The client is responsible for selecting the correct asset and entering the intended amount.</p>
+          <p>For the current MVP, every job has a separate wallet. The JobsAI backend holds the encrypted signing key needed to send an approved payout or refund. JobsAI also funds a separate wallet that pays the network fees for these operations.</p>
+          <div class="paper-callout paper-callout-blue"><strong>What this means for users</strong><p>Funds are managed by the JobsAI service while a job is active. This is not a trustless smart-contract escrow: users rely on JobsAI to protect its systems and carry out the recorded payment decision. A compromise of the service or its keys could put job funds at risk.</p></div>
+          <p>A payment can take time to complete or require operational attention if a network transaction becomes stuck. Incorrect or unmatched transfers are not automatically refunded. Check the network, destination, asset, and amount before confirming a wallet transaction.</p>
+        </section>
+
+        <section id="disputes" class="paper-section">
+          <span class="section-number">06 / REVISIONS AND DISPUTES</span>
+          <h2>Keep every version. Pause when there is a dispute.</h2>
+          <p>Repeated revisions are part of the normal work cycle. JobsAI preserves each submission so the client and worker can refer to what was delivered and what changed. When either side opens a dispute, normal job actions stop and the funds remain pending while a reviewer considers the record.</p>
+          <p>JobsAI is developing an AI tool to help reviewers organize and compare the brief, acceptance requirements, submissions, revision requests, and job history. This is intended as decision support. A human reviewer remains responsible for the outcome. The AI tool is not connected to the live payment process and cannot authorize or send a payout or refund.</p>
+        </section>
+
+        <section id="limits" class="paper-section">
+          <span class="section-number">07 / CURRENT LIMITS</span>
+          <h2>An early product with clear boundaries.</h2>
+          <ul class="limits-list">
+            <li>The current service manages job wallets and signs approved transfers; a separate smart contract does not control releases.</li>
+            <li>One wallet can hold up to two active claims. This does not prevent a person from using multiple wallets, and claims do not expire automatically.</li>
+            <li>Some failed or delayed transfers still need help from the JobsAI operations team.</li>
+            <li>JobsAI has not completed an independent security audit. The service should not be treated as independently audited payment infrastructure.</li>
+            <li>Career features and AI-generated career applications are separate from the live funded-work flow.</li>
+          </ul>
+          <p>JobsAI will update this paper as the product and its protections change. Nothing here promises a particular job result, payment time, or future feature.</p>
+          <div class="paper-end-links"><a class="pill primary" href="workspace.html?tab=jobs">Explore funded work <span aria-hidden="true">↗</span></a><a class="text-link" href="/roadmap">See the product roadmap <span aria-hidden="true">→</span></a></div>
+        </section>
+      </article>
+    </div>
+  </main>
+
+  <footer class="publication-footer"><a class="brand" href="index.html"><img src="assets/jobsai-approved-mark.svg?v=9e2067afbf" alt="" width="27" height="27">JobsAI</a><p>Clear work. Clear review. A record both sides can see.</p><nav aria-label="Footer"><a href="/roadmap">Roadmap</a><a href="index.html">Home</a><a href="workspace.html?tab=jobs">Dashboard</a><a href="mailto:tryjobsai@atomicmail.io">Contact</a></nav><small>© 2026 JobsAI · Product details reflect the current release and may change.</small></footer>
+</body>
+</html>

@@ -8,7 +8,8 @@ const mime={'.html':'text/html; charset=utf-8','.css':'text/css','.js':'text/jav
 function readRequestBody(req,limit=256*1024){return new Promise((resolve,reject)=>{const chunks=[];let size=0;req.on('data',chunk=>{size+=chunk.length;if(size>limit){reject(new Error('Request body too large'));req.destroy();return;}chunks.push(chunk);});req.on('end',()=>resolve(Buffer.concat(chunks)));req.on('error',reject);});}
 http.createServer(async(req,res)=>{
   try {
-    const path=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
+    const requestedPath=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
+    const path=({'/whitepaper':'/whitepaper.html','/roadmap':'/roadmap.html'})[requestedPath]||requestedPath;
     if(path.startsWith('/api/jobsai/')){
       const headers=new Headers();for(const name of ['accept','authorization','cookie','content-type','content-length']){const value=req.headers[name];if(typeof value==='string')headers.set(name,value);}
       let body;if(!['GET','HEAD'].includes(req.method||'GET')){const uploadPath=new URL(req.url,'http://localhost').pathname==='/api/jobsai/v1/media/images';body=await readRequestBody(req,uploadPath?5*1024*1024:256*1024);}

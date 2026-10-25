@@ -4,6 +4,14 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/whitepaper",
+      "destination": "/whitepaper.html"
+    },
+    {
+      "source": "/roadmap",
+      "destination": "/roadmap.html"
+    },
+    {
       "source": "/chunks/:path*",
       "destination": "/wallet/chunks/:path*"
     },
