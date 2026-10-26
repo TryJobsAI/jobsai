@@ -38,17 +38,6 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
     if (!address || typeof address === "string") throw new Error("Test API did not bind a TCP port.");
     const baseUrl = `http://127.0.0.1:${address.port}`;
 
-    const nonceBurst = await Promise.all(Array.from({ length: 300 }, async () => {
-      const wallet = `0x${randomBytes(20).toString("hex")}`;
-      nonceWallets.push(wallet);
-      const response = await fetch(`${baseUrl}/v1/auth/nonce`, {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: wallet }),
-      });
-      return response.status;
-    }));
-    expect(nonceBurst.filter((status) => status === 200)).toHaveLength(20);
-    expect(nonceBurst.filter((status) => status === 429)).toHaveLength(280);
-
     const client = await db.connect();
     try {
       await client.query("BEGIN");
@@ -237,6 +226,17 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
     expect(logout.status).toBe(204);
     expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
     expect((await get("/v1/team/auth/status", teamToken)).status).toBe(401);
+
+    const nonceBurst = await Promise.all(Array.from({ length: 300 }, async () => {
+      const wallet = `0x${randomBytes(20).toString("hex")}`;
+      nonceWallets.push(wallet);
+      const response = await fetch(`${baseUrl}/v1/auth/nonce`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: wallet }),
+      });
+      return response.status;
+    }));
+    expect(nonceBurst.filter((status) => status === 200)).toHaveLength(20);
+    expect(nonceBurst.filter((status) => status === 429)).toHaveLength(280);
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => error ? reject(error) : resolve());
