@@ -20,11 +20,13 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
   const clientWallet = `0x${randomBytes(20).toString("hex")}`;
   const doerWallet = `0x${randomBytes(20).toString("hex")}`;
   const disputeDoerWallet = `0x${randomBytes(20).toString("hex")}`;
+  const recoveryDoerWallet = `0x${randomBytes(20).toString("hex")}`;
   const teamWallet = process.env.TEAM_WALLET_ADDRESSES?.split(",")[0]?.trim().toLowerCase();
   if (!teamWallet) throw new Error("Integration tests require an authorized team wallet.");
   const clientToken = randomBytes(32).toString("base64url");
   const doerToken = randomBytes(32).toString("base64url");
   const disputeDoerToken = randomBytes(32).toString("base64url");
+  const recoveryDoerToken = randomBytes(32).toString("base64url");
   const teamToken = randomBytes(32).toString("base64url");
   const jobIds: string[] = [];
   const nonceWallets: string[] = [];
@@ -42,17 +44,18 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
     try {
       await client.query("BEGIN");
       const inserted = await client.query<{ id: string; wallet_address: string }>(
-        "INSERT INTO users (wallet_address) VALUES ($1),($2),($3),($4) RETURNING id,wallet_address",
-        [clientWallet, doerWallet, disputeDoerWallet, teamWallet],
+        "INSERT INTO users (wallet_address) VALUES ($1),($2),($3),($4),($5) RETURNING id,wallet_address",
+        [clientWallet, doerWallet, disputeDoerWallet, recoveryDoerWallet, teamWallet],
       );
       userIds = inserted.rows.map((row) => row.id);
       idsByWallet = new Map(inserted.rows.map((row) => [row.wallet_address, row.id]));
       await client.query(
         `INSERT INTO sessions (token_hash,user_id,expires_at)
          VALUES ($1,$2,now()+interval '1 day'),($3,$4,now()+interval '1 day'),
-                ($5,$6,now()+interval '1 day'),($7,$8,now()+interval '1 day')`,
+                ($5,$6,now()+interval '1 day'),($7,$8,now()+interval '1 day'),($9,$10,now()+interval '1 day')`,
         [hashSessionToken(clientToken), idsByWallet.get(clientWallet), hashSessionToken(doerToken), idsByWallet.get(doerWallet),
-          hashSessionToken(disputeDoerToken), idsByWallet.get(disputeDoerWallet), hashSessionToken(teamToken), idsByWallet.get(teamWallet)],
+          hashSessionToken(disputeDoerToken), idsByWallet.get(disputeDoerWallet), hashSessionToken(recoveryDoerToken), idsByWallet.get(recoveryDoerWallet),
+          hashSessionToken(teamToken), idsByWallet.get(teamWallet)],
       );
       await client.query("COMMIT");
     } catch (error) {
@@ -140,7 +143,7 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
     expect(claimedCancel.body.error.code).toBe("job_not_cancellable");
 
     expect((await request(`/v1/jobs/${disputed}/claim`, disputeDoerToken, {})).status).toBe(200);
-    expect((await request(`/v1/jobs/${payoutFailure}/claim`, doerToken, {})).status).toBe(200);
+    expect((await request(`/v1/jobs/${payoutFailure}/claim`, recoveryDoerToken, {})).status).toBe(200);
     await db.query(
       `INSERT INTO job_settlements(job_id,outcome,recipient,amount_raw,status,error)
        VALUES($1,'pay_doer',$2,10000000000000000,'pending','recipient rejected during gas estimation')`,
