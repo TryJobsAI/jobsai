@@ -41,6 +41,7 @@ type JobRow = {
   submitted_at: Date | null;
   settled_at: Date | null;
   settlement_status?: string | null;
+  settlement_outcome?: string | null;
   settlement_error?: string | null;
   settlement_recipient?: string | null;
   settlement_payout_signed_tx?: string | null;
@@ -48,7 +49,7 @@ type JobRow = {
 };
 
 const jobSelect = `SELECT j.*, c.wallet_address AS client_wallet, d.wallet_address AS doer_wallet,
-    ew.address AS escrow_address, s.status AS settlement_status, s.error AS settlement_error,
+    ew.address AS escrow_address, s.status AS settlement_status, s.outcome AS settlement_outcome, s.error AS settlement_error,
     s.recipient AS settlement_recipient, s.payout_signed_tx AS settlement_payout_signed_tx,
     s.lease_until AS settlement_lease_until
   FROM jobs j JOIN users c ON c.id=j.client_id
@@ -76,10 +77,13 @@ function presentJob(job: JobRow) {
     createdAt: job.created_at,
     fundedAt: job.funded_at,
     claimedAt: job.claimed_at,
+    claimExpiresAt: job.status === "in_progress" && job.claimed_at
+      ? new Date(job.claimed_at.getTime() + config.CLAIM_EXPIRY_HOURS * 60 * 60_000)
+      : null,
     submittedAt: job.submitted_at,
     settledAt: job.settled_at,
     payoutRecipient: job.settlement_recipient ?? job.doer_wallet,
-    payoutRecoveryAvailable: job.status === "settlement_pending" && job.settlement_status === "pending" && Boolean(job.settlement_error) && !job.settlement_payout_signed_tx && (!job.settlement_lease_until || job.settlement_lease_until < new Date()),
+    payoutRecoveryAvailable: job.status === "settlement_pending" && job.settlement_status === "pending" && job.settlement_outcome === "pay_doer" && Boolean(job.settlement_error) && !job.settlement_payout_signed_tx && (!job.settlement_lease_until || job.settlement_lease_until < new Date()),
   };
 }
 
@@ -94,6 +98,34 @@ async function appendEvent(
     "INSERT INTO job_events (job_id,actor_id,event_type,details) VALUES ($1,$2,$3,$4)",
     [jobId, actorId, eventType, JSON.stringify(details)],
   );
+}
+
+export async function releaseExpiredClaims() {
+  let released = 0;
+  for (let batch = 0; batch < 5; batch++) {
+    const result = await db.query(
+      `WITH expired AS (
+         SELECT j.id,j.doer_id FROM jobs j
+         WHERE j.status='in_progress'
+           AND j.claimed_at<=now()-($1::int*interval '1 hour')
+           AND NOT EXISTS (SELECT 1 FROM job_submissions sub WHERE sub.job_id=j.id)
+         ORDER BY j.claimed_at
+         LIMIT 100
+         FOR UPDATE SKIP LOCKED
+       ), released AS (
+         UPDATE jobs j SET doer_id=NULL,status='ready',claimed_at=NULL,updated_at=now()
+         FROM expired e WHERE j.id=e.id
+         RETURNING j.id
+       )
+       INSERT INTO job_events(job_id,event_type,details)
+       SELECT id,'job.claim_expired',jsonb_build_object('claimExpiryHours',$1::int) FROM released
+       RETURNING job_id`,
+      [config.CLAIM_EXPIRY_HOURS],
+    );
+    released += result.rowCount ?? 0;
+    if ((result.rowCount ?? 0) < 100) break;
+  }
+  return released;
 }
 
 jobsRouter.post(
@@ -157,6 +189,7 @@ jobsRouter.post(
 jobsRouter.get(
   "/ready",
   asyncRoute(async (request, response) => {
+    await releaseExpiredClaims();
     const page = z.coerce.number().int().min(1).max(10_000).default(1).parse(request.query.page);
     const limit = z.coerce.number().int().min(1).max(100).default(30).parse(request.query.limit);
     const result = await db.query<JobRow>(
@@ -264,6 +297,7 @@ jobsRouter.post(
   "/:id/claim",
   requireAuth,
   asyncRoute(async (request, response) => {
+    await releaseExpiredClaims();
     const id = uuid.parse(request.params.id);
     const client = await db.connect();
     try {
@@ -309,7 +343,7 @@ jobsRouter.post(
       const result = await client.query<{ id: string }>(
         `SELECT j.id FROM jobs j JOIN job_settlements s ON s.job_id=j.id
          WHERE j.id=$1 AND j.doer_id=$2 AND j.status='settlement_pending'
-           AND s.status='pending' AND s.error IS NOT NULL AND s.payout_signed_tx IS NULL
+           AND s.status='pending' AND s.outcome='pay_doer' AND s.error IS NOT NULL AND s.payout_signed_tx IS NULL
            AND (s.lease_until IS NULL OR s.lease_until<now())
          FOR UPDATE OF j,s`, [id, request.auth!.userId],
       );
@@ -380,6 +414,34 @@ jobsRouter.post(
     } finally {
       client.release();
     }
+  }),
+);
+
+jobsRouter.post(
+  "/:id/release-worker",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const id = uuid.parse(request.params.id);
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const selected = await client.query<{ client_id: string; doer_id: string | null; status: string; has_submissions: boolean }>(
+        `SELECT j.client_id,j.doer_id,j.status,EXISTS(SELECT 1 FROM job_submissions s WHERE s.job_id=j.id) AS has_submissions
+         FROM jobs j WHERE j.id=$1 FOR UPDATE`, [id],
+      );
+      const job = selected.rows[0];
+      if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
+      if (job.client_id !== request.auth!.userId) throw new ApiError(403, "client_only", "Only the client can release the assigned worker.");
+      if (job.status !== "in_progress" || !job.doer_id || job.has_submissions)
+        throw new ApiError(409, "worker_not_releasable", "A worker can be released only before any work has been submitted.");
+      await client.query("UPDATE jobs SET doer_id=NULL,status='ready',claimed_at=NULL,updated_at=now() WHERE id=$1", [id]);
+      await appendEvent(client, id, request.auth!.userId, "job.worker_released_by_client");
+      await client.query("COMMIT");
+      response.json({ data: { jobId: id, status: "ready" } });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally { client.release(); }
   }),
 );
 

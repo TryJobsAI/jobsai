@@ -91,6 +91,10 @@ function MyWork({ session, walletAddress }) {
     await doAction('Unclaiming job', 'Releasing this job back to the funded work board…', () => JobsAIAPI.unclaim(job.id, session.token), 'Job unclaimed', 'This job is back on the funded work board and can be claimed by another worker.');
   }
 
+  async function releaseWorker(job) {
+    await doAction('Releasing the worker', 'Returning this unstarted job to the funded work board…', () => JobsAIAPI.releaseWorker(job.id, session.token), 'Worker released', 'The job is back on the funded work board and another worker can claim it.');
+  }
+
   async function openReview(job) {
     setFeedback({ title: 'Loading job history', message: 'Retrieving submissions and revision requests…', kind: 'loading' });
     try {
@@ -160,10 +164,11 @@ function MyWork({ session, walletAddress }) {
       const isClient = job.clientWallet?.toLowerCase() === walletAddress?.toLowerCase();
       const canSubmit = isDoer && ['in_progress', 'revision_requested'].includes(job.status);
       const canDispute = ['in_progress', 'revision_requested', 'submitted'].includes(job.status) && (isDoer || isClient);
-      return <article className="my-work-card" key={job.id}><div className="my-work-summary"><div><h3>{job.title}</h3><span className="my-work-status">{statusLabels[job.status] || job.status.replaceAll('_', ' ')}</span></div><strong>{job.amount} {job.asset}</strong></div><div className="my-work-actions">
+      return <article className="my-work-card" key={job.id}><div className="my-work-summary"><div><h3>{job.title}</h3><span className="my-work-status">{statusLabels[job.status] || job.status.replaceAll('_', ' ')}</span>{job.claimExpiresAt && <small>Claim expires {new Date(job.claimExpiresAt).toLocaleString()}</small>}</div><strong>{job.amount} {job.asset}</strong></div><div className="my-work-actions">
         <button className="pill outline" onClick={() => openReview(job)}>View job history</button>
         {canSubmit && <button className="pill primary" onClick={() => setDialog({ mode: 'submit', job })}>Submit work</button>}
         {isDoer && job.status === 'in_progress' && <button className="pill outline" disabled={busy} onClick={() => unclaim(job)}>Unclaim job</button>}
+        {isClient && job.status === 'in_progress' && <button className="pill outline" disabled={busy} onClick={() => releaseWorker(job)}>Release worker</button>}
         {isDoer && job.payoutRecoveryAvailable && <button className="pill primary" disabled={busy} onClick={() => setDialog({ mode: 'payout', job })}>Update payout wallet</button>}
         {canDispute && <button className="pill outline" onClick={() => setDialog({ mode: 'dispute', job })}>Open dispute</button>}
       </div></article>;

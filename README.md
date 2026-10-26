@@ -20,7 +20,7 @@ The client chooses whether to pay in ETH or USDG and sets the amount. That same 
 ## Explore JobsAI
 
 - **Create and fund a task:** Clients describe the work, explain what's required, choose ETH or USDG, and set the amount before funding the job.
-- **Find and claim work:** Workers browse funded jobs and claim work that fits them. A worker can return a claimed job before submitting any work.
+- **Find and claim work:** Workers browse funded jobs and claim work that fits them. A worker can return a claimed job before submitting any work. An unsubmitted claim expires after 24 hours by default, and clients can release the worker sooner.
 - **Submit and revise:** Workers can submit work and respond to revision requests. Earlier submissions stay in the job history.
 - **Review and pay:** The client accepts completed work to start payment to the worker.
 - **Cancel or request a review:** Before anyone claims the job, the client can cancel and request a refund. If a disagreement happens after a claim, the job pauses for team review.
@@ -65,7 +65,7 @@ Wallet authentication uses SIWE. Authenticated clients and workers can use these
 | Sign in | `POST /v1/auth/nonce`, `POST /v1/auth/verify` |
 | Create and fund a job | `POST /v1/jobs`, `POST /v1/jobs/:id/fund` |
 | Cancel a funded job before it is claimed | `POST /v1/jobs/:id/cancel` |
-| Find and claim work | `GET /v1/jobs/ready`, `POST /v1/jobs/:id/claim` |
+| Find and claim work | `GET /v1/jobs/ready`, `POST /v1/jobs/:id/claim`, `POST /v1/jobs/:id/unclaim`, `POST /v1/jobs/:id/release-worker` |
 | Submit and revise | `POST /v1/jobs/:id/submissions`, `POST /v1/jobs/:id/revisions` |
 | Accept and pay | `POST /v1/jobs/:id/accept` |
 | Open a dispute | `POST /v1/jobs/:id/disputes` |
@@ -74,7 +74,7 @@ Wallet authentication uses SIWE. Authenticated clients and workers can use these
 
 See [`backend/src/jobs.ts`](backend/src/jobs.ts) for route behavior and [`backend/src/settlement.ts`](backend/src/settlement.ts) for settlement handling.
 
-Workers can hold at most `MAX_ACTIVE_CLAIMS_PER_WALLET` active jobs at once. The default is two. Claims are serialized per wallet so concurrent requests cannot bypass this limit.
+Workers can hold at most `MAX_ACTIVE_CLAIMS_PER_WALLET` active jobs at once. The default is two. Claims are serialized per wallet so concurrent requests cannot bypass this limit. A claim with no submission expires after 24 hours by default; clients can release a worker sooner.
 
 ### How payments are handled
 

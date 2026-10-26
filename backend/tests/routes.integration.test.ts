@@ -98,7 +98,7 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
       return id;
     }
 
-    const [first, second, third, fourth, cancellation, disputed, payoutFailure] = await Promise.all([
+    const [first, second, third, fourth, cancellation, disputed, payoutFailure, releaseJob] = await Promise.all([
       createFundedReadyJob("Claim cap one"),
       createFundedReadyJob("Claim cap two"),
       createFundedReadyJob("Concurrent claim three"),
@@ -106,6 +106,7 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
       createFundedReadyJob("Refund before claim"),
       createFundedReadyJob("Dispute route lifecycle"),
       createFundedReadyJob("Recover failed payout"),
+      createFundedReadyJob("Client release and claim expiry"),
     ]);
 
     expect((await request(`/v1/jobs/${first}/claim`, doerToken, {})).status).toBe(200);
@@ -144,6 +145,16 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
 
     expect((await request(`/v1/jobs/${disputed}/claim`, disputeDoerToken, {})).status).toBe(200);
     expect((await request(`/v1/jobs/${payoutFailure}/claim`, recoveryDoerToken, {})).status).toBe(200);
+    expect((await request(`/v1/jobs/${releaseJob}/claim`, recoveryDoerToken, {})).status).toBe(200);
+    const clientRelease = await request(`/v1/jobs/${releaseJob}/release-worker`, clientToken, {});
+    expect(clientRelease.status).toBe(200);
+    expect(clientRelease.body.data).toMatchObject({ jobId: releaseJob, status: "ready" });
+    expect((await request(`/v1/jobs/${releaseJob}/claim`, recoveryDoerToken, {})).status).toBe(200);
+    await db.query("UPDATE jobs SET claimed_at=now()-interval '25 hours' WHERE id=$1", [releaseJob]);
+    const readyAfterExpiry = await get("/v1/jobs/ready", clientToken);
+    expect(readyAfterExpiry.body.data).toEqual(expect.arrayContaining([expect.objectContaining({ id: releaseJob, status: "ready", doerWallet: null })]));
+    const expiredJob = await db.query<{ status: string; doer_id: string | null }>("SELECT status,doer_id FROM jobs WHERE id=$1", [releaseJob]);
+    expect(expiredJob.rows[0]).toEqual({ status: "ready", doer_id: null });
     await db.query(
       `INSERT INTO job_settlements(job_id,outcome,recipient,amount_raw,status,error)
        VALUES($1,'pay_doer',$2,10000000000000000,'pending','recipient rejected during gas estimation')`,
@@ -211,6 +222,13 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
       "SELECT outcome,recipient,error FROM job_settlements WHERE job_id=$1", [payoutFailure],
     );
     expect(recovery.rows[0]).toMatchObject({ outcome: "refund_client", recipient: clientWallet, error: null });
+    await db.query("UPDATE job_settlements SET error='refund transfer estimate failed',lease_until=NULL WHERE job_id=$1", [payoutFailure]);
+    const attemptedRefundRedirect = await request(`/v1/jobs/${payoutFailure}/payout-recipient`, recoveryDoerToken, { address: recoveryDoerWallet });
+    expect(attemptedRefundRedirect.status).toBe(409);
+    const unchangedRefund = await db.query<{ recipient: string }>("SELECT recipient FROM job_settlements WHERE job_id=$1", [payoutFailure]);
+    expect(unchangedRefund.rows[0].recipient).toBe(clientWallet);
+    const workerJobs = await get("/v1/jobs/mine", recoveryDoerToken);
+    expect(workerJobs.body.data.find((job: { id: string }) => job.id === payoutFailure).payoutRecoveryAvailable).toBe(false);
 
     const resolved = await request(`/v1/team/disputes/${disputed}/resolve`, teamToken, {
       outcome: "pay_doer",

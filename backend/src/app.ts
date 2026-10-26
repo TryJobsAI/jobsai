@@ -25,14 +25,14 @@ app.get("/health/ready", asyncRoute(async (_request, response) => {
 const authRouter = Router();
 authRouter.post("/nonce", rateLimit([
   { scope: "auth-nonce-ip", limit: 20, windowSeconds: 60, identity: requestIdentity.clientIp },
-  { scope: "auth-nonce-wallet", limit: 5, windowSeconds: 600, identity: requestIdentity.walletFromBody },
+  { scope: "auth-nonce-ip-wallet", limit: 5, windowSeconds: 600, identity: requestIdentity.walletFromBodyAndIp },
 ]), asyncRoute(async (request, response) => {
   const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/).parse(request.body?.address);
   response.json({ data: await issueNonce(address) });
 }));
 authRouter.post("/verify", rateLimit([
   { scope: "auth-verify-ip", limit: 30, windowSeconds: 60, identity: requestIdentity.clientIp },
-  { scope: "auth-verify-wallet", limit: 10, windowSeconds: 600, identity: requestIdentity.walletFromBody },
+  { scope: "auth-verify-ip-wallet", limit: 10, windowSeconds: 600, identity: requestIdentity.walletFromBodyAndIp },
 ]), asyncRoute(async (request, response) => {
   const input = z.object({ address: z.string().regex(/^0x[0-9a-fA-F]{40}$/), nonce: z.string().min(1), signature: z.string().regex(/^0x[0-9a-fA-F]+$/) }).parse(request.body);
   response.json({ data: await createSession({ ...input, signature: input.signature as `0x${string}` }) });

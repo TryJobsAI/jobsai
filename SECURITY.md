@@ -23,10 +23,11 @@ JobsAI is developing an AI tool to help organize and compare those records. A pe
 ## Protections in place
 
 - A client can cancel a funded job only before a worker claims it. This starts a refund to the client, which can take time to complete. After a worker claims the job, disagreements go through team review.
-- One wallet can claim up to two active jobs at a time. This limit does not prevent someone from using multiple wallets, and claims do not expire automatically.
+- One wallet can claim up to two active jobs at a time. An unsubmitted claim returns to the board after 24 hours by default, and the client can release the worker before a submission. Operators can change the expiry period. The wallet limit does not prevent someone from using multiple wallets.
 - New jobs have a minimum amount of 0.001 ETH or 1 USDG by default. Operators can raise these minimums. This reduces very small jobs that cost more in network fees than they can reasonably support; it does not guarantee every job is economical.
 - API requests are rate limited by client IP, and wallet sign-in requests have tighter limits by IP and wallet. Job creation is also capped per client wallet. These controls reduce automated bursts but do not stop distributed abuse.
 - Before sponsoring an escrow transfer, the service checks that the gas wallet can cover the estimated sponsorship and remain above its configured reserve. If it cannot, settlement pauses before the sponsorship transaction is sent.
+- If a gas-wallet transaction stays pending beyond its configured wait, the service can replace it with a higher-fee transaction using the same nonce. Earlier signed transaction hashes are retained so a late confirmation is recognized.
 - If a payout fails before a payout transaction is signed, the worker can replace the recipient wallet and retry. The protected team review queue can also resolve a failed payout by choosing the worker or client. Once a payout transaction has been signed, these recovery choices are locked to avoid sending a second payment.
 - Only the client and assigned worker can take part in the job's normal actions. The service checks who is acting and whether the requested action is allowed at that point in the job.
 - The service checks that a funding payment used the right network, payment type (ETH or USDG), amount, and job wallet before making the job available.

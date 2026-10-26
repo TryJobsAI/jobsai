@@ -21,6 +21,11 @@ export const requestIdentity = {
       ? address.toLowerCase()
       : undefined;
   },
+  walletFromBodyAndIp: (request: Request) => {
+    const wallet = request.body?.address;
+    if (typeof wallet !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(wallet)) return undefined;
+    return `${clientIp(request)}:${wallet.toLowerCase()}`;
+  },
   authenticatedUser: (request: Request) => request.auth?.userId,
 };
 

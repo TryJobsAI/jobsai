@@ -45,6 +45,7 @@
     logout: token => request('/v1/auth/logout', { method: 'POST', token }),
     claim: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/claim`, { method: 'POST', token, body: {} }),
     unclaim: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/unclaim`, { method: 'POST', token, body: {} }),
+    releaseWorker: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/release-worker`, { method: 'POST', token, body: {} }),
     submissions: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/submissions`, { token }),
     revisions: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/revisions`, { token }),
     submitWork: (jobId, input, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/submissions`, { method: 'POST', token, body: input }),
