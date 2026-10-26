@@ -44,16 +44,16 @@ function TeamReview() {
   }, [address, isConnected, isReconnecting, session]);
 
   async function loadDisputes(token = session?.token, keepSelection = false) {
-    setFeedback({ title: 'Loading disputes', message: 'Retrieving the team review queue…', kind: 'loading' });
+    setFeedback({ title: 'Loading review queue', message: 'Retrieving disputes and payout failures for team review…', kind: 'loading' });
     try {
       const response = await JobsAIAPI.teamDisputes(token);
       const rows = Array.isArray(response?.data) ? response.data : [];
       setDisputes(rows);
       if (!keepSelection) { setSelected(null); setDetail(null); }
-      setFeedback(rows.length ? null : { title: 'No open disputes', message: 'New disputes will appear here with the job history and evidence for team review.', kind: 'info' });
+      setFeedback(rows.length ? null : { title: 'No open review cases', message: 'Disputes and recoverable payout failures will appear here for team review.', kind: 'info' });
       return rows;
     } catch (error) {
-      setFeedback({ title: 'Could not load disputes', message: error.message || 'JobsAI could not retrieve the review queue.', kind: 'error' });
+      setFeedback({ title: 'Could not load review queue', message: error.message || 'JobsAI could not retrieve the review queue.', kind: 'error' });
       return [];
     }
   }
@@ -93,14 +93,14 @@ function TeamReview() {
 
   async function openDispute(job) {
     setSelected(job.id);
-    setFeedback({ title: 'Loading dispute record', message: 'Opening the job brief, submissions, revisions, and event history…', kind: 'loading' });
+    setFeedback({ title: 'Loading review record', message: 'Opening the job brief, submissions, revisions, and event history…', kind: 'loading' });
     try {
       const response = await JobsAIAPI.teamDispute(job.id, session.token);
       setDetail(response.data);
       setFeedback(null);
     } catch (error) {
       setSelected(null);
-      setFeedback({ title: 'Could not open dispute', message: error.message || 'JobsAI could not retrieve this dispute record.', kind: 'error' });
+      setFeedback({ title: 'Could not open review record', message: error.message || 'JobsAI could not retrieve this case record.', kind: 'error' });
     }
   }
 
@@ -147,20 +147,20 @@ function TeamReview() {
       <p>Connect with an authorized team wallet and enter the team password to open the review queue.</p>
       <form onSubmit={signIn}><label htmlFor="team-password">Team password</label><input id="team-password" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required /><button className="pill primary" disabled={busy || !password}>{busy ? 'Checking…' : 'Open review queue'}</button></form>
     </section> : <>
-      <section className="team-review-title"><div><span className="eyebrow">PRIVATE TEAM WORKSPACE</span><h1>Dispute review</h1><p>Review the job record and choose the settlement outcome.</p></div><button className="pill outline" onClick={() => loadDisputes(session.token, true)} disabled={busy}>Refresh queue</button></section>
+      <section className="team-review-title"><div><span className="eyebrow">PRIVATE TEAM WORKSPACE</span><h1>Team review</h1><p>Review disputes and payout failures, then choose the settlement outcome.</p></div><button className="pill outline" onClick={() => loadDisputes(session.token, true)} disabled={busy}>Refresh queue</button></section>
       <div className="team-review-layout">
         <aside className="team-dispute-queue" aria-label="Open disputes">
-          <div className="team-queue-heading"><h2>Open disputes</h2><span>{disputes.length}</span></div>
+          <div className="team-queue-heading"><h2>Review cases</h2><span>{disputes.length}</span></div>
           {disputes.map(job => <button className={`team-dispute-item${selected === job.id ? ' selected' : ''}`} key={job.id} onClick={() => openDispute(job)}>
-            <span className="team-dispute-item-title">{job.title}</span><span className="team-dispute-item-meta">{job.amount} {job.asset} · {job.status.replaceAll('_', ' ')}</span>
+            <span className="team-dispute-item-title">{job.title}</span><span className="team-dispute-item-meta">{job.reviewType === 'settlement_failure' ? 'Payout failure' : 'Dispute'} · {job.amount} {job.asset}</span>
           </button>)}
         </aside>
         <section className="team-dispute-record" aria-live="polite">
-          {!detail ? <div className="team-record-placeholder"><span className="eyebrow">REVIEW RECORD</span><h2>Select a dispute</h2><p>Each record includes the original brief, acceptance criteria, dispute reason, submissions, revision history, and event log.</p></div> : <>
-            <div className="team-record-heading"><div><span className="eyebrow">DISPUTED JOB · {detail.job.amount} {detail.job.asset}</span><h2>{detail.job.title}</h2></div><span className="team-record-status">{detail.job.status.replaceAll('_', ' ')}</span></div>
+          {!detail ? <div className="team-record-placeholder"><span className="eyebrow">REVIEW RECORD</span><h2>Select a case</h2><p>Each record includes the original brief, acceptance criteria, dispute reason or payout error, submissions, revision history, and event log.</p></div> : <>
+            <div className="team-record-heading"><div><span className="eyebrow">{detail.reviewType === 'settlement_failure' ? 'PAYOUT FAILURE' : 'DISPUTED JOB'} · {detail.job.amount} {detail.job.asset}</span><h2>{detail.job.title}</h2></div><span className="team-record-status">{detail.job.status.replaceAll('_', ' ')}</span></div>
             <section className="team-record-section"><h3>Participants</h3><p><strong>Client wallet</strong><br /><code>{detail.job.clientWallet}</code></p><p><strong>Worker wallet</strong><br /><code>{detail.job.doerWallet || 'No worker assigned'}</code></p></section>
             <section className="team-record-section"><h3>Job brief</h3><p>{detail.job.description}</p><h4>Acceptance criteria</h4><ul>{detail.job.acceptanceCriteria.map((item, index) => <li key={index}>{item}</li>)}</ul></section>
-            <section className="team-record-section"><h3>Dispute reason</h3><p>{detail.dispute.reason}</p><small>Opened {new Date(detail.dispute.createdAt).toLocaleString()}</small></section>
+            <section className="team-record-section"><h3>{detail.reviewType === 'settlement_failure' ? 'Payout failure details' : 'Dispute reason'}</h3><p>{detail.dispute.reason}</p><small>{detail.reviewType === 'settlement_failure' ? 'This failure happened before a payout transaction was signed.' : `Opened ${new Date(detail.dispute.createdAt).toLocaleString()}`}</small></section>
             <section className="team-record-section"><h3>Submissions</h3>{detail.submissions.map(item => <article className="team-submission" key={item.id}><h4>Version {item.revision}</h4><p><strong>Summary</strong><br />{item.summary}</p><p><strong>Deliverable</strong><br />{item.deliverable}</p>{item.evidence?.length > 0 && <ul>{item.evidence.map(link => { const safeUrl = safeEvidenceUrl(link); return <li key={link}>{safeUrl ? <a href={safeUrl} target="_blank" rel="noopener noreferrer">{link}</a> : link}</li>; })}</ul>}</article>)}</section>
             <section className="team-record-section"><h3>Revision requests</h3>{detail.revisions.length ? detail.revisions.map(item => <article className="team-revision" key={item.id}><strong>After version {item.revision}</strong><p>{item.feedback}</p></article>) : <p>No revision requests recorded.</p>}</section>
             <section className="team-record-section"><h3>Event history</h3><ol className="team-event-list">{detail.events.map((event, index) => <li key={`${event.event_type}-${index}`}><div><strong>{event.event_type.replaceAll('.', ' ').replaceAll('_', ' ')}</strong>{event.details && Object.keys(event.details).length > 0 && <code>{JSON.stringify(event.details)}</code>}</div><time>{new Date(event.created_at).toLocaleString()}</time></li>)}</ol></section>

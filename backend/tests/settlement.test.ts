@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { decodeFunctionData, erc20Abi, type Address } from "viem";
-import { buildPayoutTransaction, escrowGasReserve, escrowSweepAmount, gasLimitWithBuffer } from "../src/settlement.js";
+import { buildPayoutTransaction, escrowGasReserve, escrowSweepAmount, gasLimitWithBuffer, gasWalletRequiredBalance } from "../src/settlement.js";
 
 const recipient = `0x${"11".repeat(20)}` as Address;
 const token = `0x${"22".repeat(20)}` as Address;
@@ -26,6 +26,7 @@ describe("settlement transaction construction", () => {
     expect(gasLimitWithBuffer(120n, 0n)).toBe(120n);
     expect(() => gasLimitWithBuffer(0n)).toThrow();
     expect(escrowGasReserve(10n, 25_200n, 30_000n, 25_200n)).toBe(1_608_000n);
+    expect(gasWalletRequiredBalance(5_000n, 1_608_000n, 10n, 25_200n)).toBe(1_865_000n);
     expect(escrowSweepAmount(500_000n, 10n, 25_200n)).toBe(248_000n);
     expect(escrowSweepAmount(100n, 10n, 25_200n)).toBe(0n);
   });

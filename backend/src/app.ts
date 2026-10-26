@@ -9,10 +9,12 @@ import { ApiError, asyncRoute, errorHandler } from "./http.js";
 import { reconcileSettlements } from "./settlement.js";
 import { IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES, uploadSubmissionImage } from "./media.js";
 import { assertCanSubmit } from "./lifecycle.js";
+import { rateLimit, requestIdentity } from "./rate-limit.js";
 
 const app = express();
 app.set("trust proxy", config.TRUST_PROXY);
 app.use(express.json({ limit: "256kb" }));
+app.use("/v1", rateLimit([{ scope: "api", limit: 240, windowSeconds: 60, identity: requestIdentity.clientIp }]));
 
 app.get("/health", (_request, response) => response.json({ status: "ok" }));
 app.get("/health/ready", asyncRoute(async (_request, response) => {
@@ -21,11 +23,17 @@ app.get("/health/ready", asyncRoute(async (_request, response) => {
 }));
 
 const authRouter = Router();
-authRouter.post("/nonce", asyncRoute(async (request, response) => {
+authRouter.post("/nonce", rateLimit([
+  { scope: "auth-nonce-ip", limit: 20, windowSeconds: 60, identity: requestIdentity.clientIp },
+  { scope: "auth-nonce-wallet", limit: 5, windowSeconds: 600, identity: requestIdentity.walletFromBody },
+]), asyncRoute(async (request, response) => {
   const address = z.string().regex(/^0x[0-9a-fA-F]{40}$/).parse(request.body?.address);
   response.json({ data: await issueNonce(address) });
 }));
-authRouter.post("/verify", asyncRoute(async (request, response) => {
+authRouter.post("/verify", rateLimit([
+  { scope: "auth-verify-ip", limit: 30, windowSeconds: 60, identity: requestIdentity.clientIp },
+  { scope: "auth-verify-wallet", limit: 10, windowSeconds: 600, identity: requestIdentity.walletFromBody },
+]), asyncRoute(async (request, response) => {
   const input = z.object({ address: z.string().regex(/^0x[0-9a-fA-F]{40}$/), nonce: z.string().min(1), signature: z.string().regex(/^0x[0-9a-fA-F]+$/) }).parse(request.body);
   response.json({ data: await createSession({ ...input, signature: input.signature as `0x${string}` }) });
 }));

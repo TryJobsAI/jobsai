@@ -32,6 +32,10 @@ export function parseJobAmount(asset: "eth" | "usdg", value: string, usdgDecimal
   return amount;
 }
 
+export function assertMinimumJobAmount(amount: bigint, minimum: bigint, asset: "eth" | "usdg") {
+  if (amount < minimum) throw new ApiError(400, "amount_below_minimum", `The minimum job amount has not been met for ${asset.toUpperCase()}.`);
+}
+
 export function parseDeadline(value: unknown, now = new Date()): Date | null {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string") throw new ApiError(400, "invalid_deadline", "deadlineAt must be a valid future date.");

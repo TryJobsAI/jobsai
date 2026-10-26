@@ -33,6 +33,10 @@ export function escrowGasReserve(gasPrice: bigint, gasTopUpLimit: bigint, payout
   return gasPrice * (gasTopUpLimit + payoutGasLimit + sweepGasLimit) * 2n;
 }
 
+export function gasWalletRequiredBalance(minimumReserve: bigint, sponsorshipValue: bigint, gasPrice: bigint, gasLimit: bigint) {
+  return minimumReserve + sponsorshipValue + gasPrice * gasLimit;
+}
+
 export function escrowSweepAmount(balance: bigint, gasPrice: bigint, sweepGasLimit: bigint) {
   const amount = balance - gasPrice * sweepGasLimit;
   return amount > 0n ? amount : 0n;
@@ -123,10 +127,22 @@ export async function processSettlement(jobId: string) {
         payoutGasLimit!,
         sweepGasLimit!,
       );
-      const gasTx = await ensureStageTx(settlement, "gas", {
-        to: settlement.escrow_address, value: reserve, gas: gasTopUpLimit ?? 1n, gasPrice,
-      }, gasAccount);
-      await sendPersisted(gasTx.raw, gasTx.hash);
+      const sponsorLock = await db.connect();
+      try {
+        await sponsorLock.query("SELECT pg_advisory_lock(73301823)");
+        if (!settlement.gas_signed_tx) {
+          const balance = await publicClient.getBalance({ address: gasWalletAddress });
+          const required = gasWalletRequiredBalance(BigInt(config.GAS_WALLET_MIN_BALANCE_WEI), reserve, gasPrice, gasTopUpLimit!);
+          if (balance < required) throw new Error("Gas wallet reserve is below the configured minimum. Settlement paused before sponsorship.");
+        }
+        const gasTx = await ensureStageTx(settlement, "gas", {
+          to: settlement.escrow_address, value: reserve, gas: gasTopUpLimit ?? 1n, gasPrice,
+        }, gasAccount);
+        await sendPersisted(gasTx.raw, gasTx.hash);
+      } finally {
+        await sponsorLock.query("SELECT pg_advisory_unlock(73301823)").catch(() => undefined);
+        sponsorLock.release();
+      }
       await db.query("UPDATE job_settlements SET phase='payout',updated_at=now() WHERE job_id=$1", [jobId]);
     }
 

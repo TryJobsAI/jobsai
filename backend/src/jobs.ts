@@ -10,8 +10,9 @@ import { db } from "./db/index.js";
 import { makeEscrowWallet, verifyJobFunding, type FundingTerms, type JobAsset } from "./escrow.js";
 import { ApiError, asyncRoute } from "./http.js";
 import { processSettlement } from "./settlement.js";
-import { createJobInputSchema, parseDeadline, parseJobAmount, submissionInputSchema } from "./job-input.js";
+import { assertMinimumJobAmount, createJobInputSchema, parseDeadline, parseJobAmount, submissionInputSchema } from "./job-input.js";
 import { assertActiveClaimCapacity, assertCanCancelFundedJob, assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertCanUnclaim, assertClaimable, assertDisputed, assertJobClient, assertParticipants, assertSettlementAllowed } from "./lifecycle.js";
+import { rateLimit, requestIdentity } from "./rate-limit.js";
 
 export const jobsRouter = Router();
 const uuid = z.string().uuid();
@@ -39,13 +40,21 @@ type JobRow = {
   claimed_at: Date | null;
   submitted_at: Date | null;
   settled_at: Date | null;
+  settlement_status?: string | null;
+  settlement_error?: string | null;
+  settlement_recipient?: string | null;
+  settlement_payout_signed_tx?: string | null;
+  settlement_lease_until?: Date | null;
 };
 
 const jobSelect = `SELECT j.*, c.wallet_address AS client_wallet, d.wallet_address AS doer_wallet,
-    ew.address AS escrow_address
+    ew.address AS escrow_address, s.status AS settlement_status, s.error AS settlement_error,
+    s.recipient AS settlement_recipient, s.payout_signed_tx AS settlement_payout_signed_tx,
+    s.lease_until AS settlement_lease_until
   FROM jobs j JOIN users c ON c.id=j.client_id
   LEFT JOIN users d ON d.id=j.doer_id
-  JOIN job_escrow_wallets ew ON ew.job_id=j.id`;
+  JOIN job_escrow_wallets ew ON ew.job_id=j.id
+  LEFT JOIN job_settlements s ON s.job_id=j.id`;
 
 function presentJob(job: JobRow) {
   return {
@@ -69,6 +78,8 @@ function presentJob(job: JobRow) {
     claimedAt: job.claimed_at,
     submittedAt: job.submitted_at,
     settledAt: job.settled_at,
+    payoutRecipient: job.settlement_recipient ?? job.doer_wallet,
+    payoutRecoveryAvailable: job.status === "settlement_pending" && job.settlement_status === "pending" && Boolean(job.settlement_error) && !job.settlement_payout_signed_tx && (!job.settlement_lease_until || job.settlement_lease_until < new Date()),
   };
 }
 
@@ -93,6 +104,8 @@ jobsRouter.post(
     if (input.asset === "usdg" && !config.USDG_TOKEN_ADDRESS)
       throw new ApiError(503, "usdg_unconfigured", "USDG jobs are not enabled until USDG_TOKEN_ADDRESS is configured.");
     const amount = parseJobAmount(input.asset, input.amount, config.USDG_DECIMALS);
+    const minimum = parseJobAmount(input.asset, input.asset === "eth" ? config.MIN_JOB_ETH_AMOUNT : config.MIN_JOB_USDG_AMOUNT, config.USDG_DECIMALS);
+    assertMinimumJobAmount(amount, minimum, input.asset);
     const id = randomUUID();
     const escrow = makeEscrowWallet(id);
     const deadlineAt = parseDeadline(request.body?.deadlineAt);
@@ -100,6 +113,12 @@ jobsRouter.post(
     const client = await db.connect();
     try {
       await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`jobs:create:${request.auth!.userId}`]);
+      const recent = await client.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM jobs WHERE client_id=$1 AND created_at>now()-interval '1 hour'",
+        [request.auth!.userId],
+      );
+      if (Number(recent.rows[0].count) >= 10) throw new ApiError(429, "job_creation_rate_limited", "You have reached the job creation limit. Try again later.");
       await client.query(
         `INSERT INTO jobs (id,client_id,title,description,acceptance_criteria,asset,amount_raw,token_address,deadline_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
@@ -275,6 +294,35 @@ jobsRouter.post(
     } finally {
       client.release();
     }
+  }),
+);
+
+jobsRouter.post(
+  "/:id/payout-recipient",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const id = uuid.parse(request.params.id);
+    const recipient = z.string().regex(/^0x[0-9a-fA-F]{40}$/).parse(request.body?.address).toLowerCase();
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query<{ id: string }>(
+        `SELECT j.id FROM jobs j JOIN job_settlements s ON s.job_id=j.id
+         WHERE j.id=$1 AND j.doer_id=$2 AND j.status='settlement_pending'
+           AND s.status='pending' AND s.error IS NOT NULL AND s.payout_signed_tx IS NULL
+           AND (s.lease_until IS NULL OR s.lease_until<now())
+         FOR UPDATE OF j,s`, [id, request.auth!.userId],
+      );
+      if (!result.rowCount) throw new ApiError(409, "payout_recipient_locked", "This job has no recoverable payout. Contact JobsAI team review for help.");
+      await client.query("UPDATE job_settlements SET recipient=$2,error=NULL,lease_until=NULL,updated_at=now() WHERE job_id=$1", [id, recipient]);
+      await appendEvent(client, id, request.auth!.userId, "job.payout_recipient_updated", { recipient });
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally { client.release(); }
+    response.status(202).json({ data: { jobId: id, status: "settlement_pending", recipient } });
+    void processSettlement(id).catch((error) => console.error(`Payout recovery ${id} failed to start:`, error));
   }),
 );
 
@@ -538,7 +586,7 @@ async function createSettlement(jobId: string, actorId: string, cause: "client_a
 }
 
 export const teamJobsRouter = Router();
-teamJobsRouter.post("/auth/login", requireAuth, requireTeam, asyncRoute(async (request, response) => {
+teamJobsRouter.post("/auth/login", rateLimit([{ scope: "team-password", limit: 5, windowSeconds: 60, identity: requestIdentity.clientIp }]), requireAuth, requireTeam, asyncRoute(async (request, response) => {
   const input = z.object({ password: z.string().min(1).max(512) }).parse(request.body);
   assertTeamPassword(input.password);
   setTeamSessionCookie(response);
@@ -555,17 +603,19 @@ teamJobsRouter.use(requireAuth, requireTeam, requireTeamPassword);
 
 teamJobsRouter.get("/disputes", asyncRoute(async (_request, response) => {
   const result = await db.query(
-    `${jobSelect} JOIN job_disputes jd ON jd.job_id=j.id
-     WHERE j.status='disputed' ORDER BY jd.created_at ASC LIMIT 100`,
+    `${jobSelect} LEFT JOIN job_disputes jd ON jd.job_id=j.id
+     WHERE j.status='disputed' OR (j.status='settlement_pending' AND s.status='pending' AND s.error IS NOT NULL AND s.payout_signed_tx IS NULL AND (s.lease_until IS NULL OR s.lease_until<now()))
+     ORDER BY COALESCE(jd.created_at,s.updated_at) ASC LIMIT 100`,
   );
-  response.json({ data: result.rows.map(presentJob) });
+  response.json({ data: result.rows.map((job: JobRow) => ({ ...presentJob(job), reviewType: job.status === "disputed" ? "dispute" : "settlement_failure" })) });
 }));
 
 teamJobsRouter.get("/disputes/:jobId", asyncRoute(async (request, response) => {
   const id = uuid.parse(request.params.jobId);
-  const jobResult = await db.query<JobRow>(`${jobSelect} WHERE j.id=$1 AND j.status='disputed'`, [id]);
+  const jobResult = await db.query<JobRow>(`${jobSelect} WHERE j.id=$1 AND (j.status='disputed' OR (j.status='settlement_pending' AND s.status='pending' AND s.error IS NOT NULL AND s.payout_signed_tx IS NULL AND (s.lease_until IS NULL OR s.lease_until<now())))`, [id]);
   const job = jobResult.rows[0];
-  if (!job) throw new ApiError(404, "dispute_not_found", "This active dispute does not exist.");
+  if (!job) throw new ApiError(404, "review_case_not_found", "This active review case does not exist.");
+  const reviewType = job.status === "disputed" ? "dispute" : "settlement_failure";
   const [disputeResult, submissions, revisions, events] = await Promise.all([
     db.query<{ id: string; opened_by: string; reason_ciphertext: string; created_at: Date }>(
       "SELECT id,opened_by,reason_ciphertext,created_at FROM job_disputes WHERE job_id=$1", [id]),
@@ -577,9 +627,11 @@ teamJobsRouter.get("/disputes/:jobId", asyncRoute(async (request, response) => {
     db.query("SELECT event_type,details,created_at FROM job_events WHERE job_id=$1 ORDER BY id", [id]),
   ]);
   const dispute = disputeResult.rows[0];
+  const settlementReason = reviewType === "settlement_failure" ? `Payout could not be completed: ${job.settlement_error}` : null;
   response.json({ data: {
     job: presentJob(job),
-    dispute: { id: dispute.id, openedBy: dispute.opened_by, reason: decryptPayload(dispute.reason_ciphertext, `dispute:${id}`), createdAt: dispute.created_at },
+    reviewType,
+    dispute: dispute ? { id: dispute.id, openedBy: dispute.opened_by, reason: decryptPayload(dispute.reason_ciphertext, `dispute:${id}`), createdAt: dispute.created_at } : { id: null, openedBy: null, reason: settlementReason, createdAt: job.created_at },
     submissions: submissions.rows.map(({ payload_ciphertext, revision, ...row }) => ({ ...row, revision, ...JSON.parse(decryptPayload(payload_ciphertext, `submission:${id}:${revision}`)) })),
     revisions: revisions.rows.map(({ feedback_ciphertext, revision, ...row }) => ({ ...row, revision, feedback: decryptPayload(feedback_ciphertext, `revision:${id}:${revision}`) })),
     events: events.rows,
@@ -594,12 +646,29 @@ teamJobsRouter.post("/disputes/:jobId/resolve", asyncRoute(async (request, respo
   try {
     await client.query("BEGIN");
     const dispute = await client.query<{ id: string }>("SELECT id FROM job_disputes WHERE job_id=$1 AND resolution IS NULL FOR UPDATE", [id]);
-    if (!dispute.rowCount) throw new ApiError(409, "dispute_already_resolved", "This dispute is already resolved or does not exist.");
-    result = await createSettlement(id, request.auth!.userId, "team_dispute_resolution", input.outcome, client);
-    await client.query(
-      `UPDATE job_disputes SET resolution=$2,resolution_note_ciphertext=$3,resolved_by=$4,resolved_at=now() WHERE job_id=$1`,
-      [id, input.outcome, encryptPayload(input.note, `resolution:${id}`), request.auth!.userId],
-    );
+    if (dispute.rowCount) {
+      result = await createSettlement(id, request.auth!.userId, "team_dispute_resolution", input.outcome, client);
+      await client.query(
+        `UPDATE job_disputes SET resolution=$2,resolution_note_ciphertext=$3,resolved_by=$4,resolved_at=now() WHERE job_id=$1`,
+        [id, input.outcome, encryptPayload(input.note, `resolution:${id}`), request.auth!.userId],
+      );
+    } else {
+      const failed = await client.query<{ client_wallet: string; doer_wallet: string | null }>(
+        `SELECT c.wallet_address AS client_wallet,d.wallet_address AS doer_wallet FROM jobs j
+         JOIN users c ON c.id=j.client_id LEFT JOIN users d ON d.id=j.doer_id
+         JOIN job_settlements s ON s.job_id=j.id
+         WHERE j.id=$1 AND j.status='settlement_pending' AND s.status='pending' AND s.error IS NOT NULL AND s.payout_signed_tx IS NULL
+           AND (s.lease_until IS NULL OR s.lease_until<now())
+         FOR UPDATE OF j,s`, [id],
+      );
+      if (!failed.rowCount) throw new ApiError(409, "review_case_resolved", "This review case is no longer available.");
+      const recipient = input.outcome === "pay_doer" ? failed.rows[0].doer_wallet : failed.rows[0].client_wallet;
+      if (!recipient) throw new ApiError(409, "worker_missing", "This job has no worker to pay.");
+      await client.query("UPDATE job_settlements SET outcome=$2,recipient=$3,error=NULL,lease_until=NULL,attempts=0,updated_at=now() WHERE job_id=$1", [id, input.outcome, recipient]);
+      await client.query("INSERT INTO job_settlement_reviews(job_id,reviewer_id,outcome,recipient,note_ciphertext) VALUES($1,$2,$3,$4,$5)", [id, request.auth!.userId, input.outcome, recipient, encryptPayload(input.note, `settlement-review:${id}`)]);
+      await appendEvent(client, id, request.auth!.userId, "job.settlement_failure_reviewed", { outcome: input.outcome, recipient });
+      result = { jobId: id, status: "settlement_pending", outcome: input.outcome };
+    }
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");

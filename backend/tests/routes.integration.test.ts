@@ -27,6 +27,7 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
   const disputeDoerToken = randomBytes(32).toString("base64url");
   const teamToken = randomBytes(32).toString("base64url");
   const jobIds: string[] = [];
+  const nonceWallets: string[] = [];
   let userIds: string[] = [];
   let idsByWallet = new Map<string, string>();
   const server = app.listen(0, "127.0.0.1");
@@ -36,6 +37,17 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("Test API did not bind a TCP port.");
     const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const nonceBurst = await Promise.all(Array.from({ length: 300 }, async () => {
+      const wallet = `0x${randomBytes(20).toString("hex")}`;
+      nonceWallets.push(wallet);
+      const response = await fetch(`${baseUrl}/v1/auth/nonce`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: wallet }),
+      });
+      return response.status;
+    }));
+    expect(nonceBurst.filter((status) => status === 200)).toHaveLength(20);
+    expect(nonceBurst.filter((status) => status === 429)).toHaveLength(280);
 
     const client = await db.connect();
     try {
@@ -94,13 +106,14 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
       return id;
     }
 
-    const [first, second, third, fourth, cancellation, disputed] = await Promise.all([
+    const [first, second, third, fourth, cancellation, disputed, payoutFailure] = await Promise.all([
       createFundedReadyJob("Claim cap one"),
       createFundedReadyJob("Claim cap two"),
       createFundedReadyJob("Concurrent claim three"),
       createFundedReadyJob("Concurrent claim four"),
       createFundedReadyJob("Refund before claim"),
       createFundedReadyJob("Dispute route lifecycle"),
+      createFundedReadyJob("Recover failed payout"),
     ]);
 
     expect((await request(`/v1/jobs/${first}/claim`, doerToken, {})).status).toBe(200);
@@ -138,6 +151,13 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
     expect(claimedCancel.body.error.code).toBe("job_not_cancellable");
 
     expect((await request(`/v1/jobs/${disputed}/claim`, disputeDoerToken, {})).status).toBe(200);
+    expect((await request(`/v1/jobs/${payoutFailure}/claim`, doerToken, {})).status).toBe(200);
+    await db.query(
+      `INSERT INTO job_settlements(job_id,outcome,recipient,amount_raw,status,error)
+       VALUES($1,'pay_doer',$2,10000000000000000,'pending','recipient rejected during gas estimation')`,
+      [payoutFailure, doerWallet],
+    );
+    await db.query("UPDATE jobs SET status='settlement_pending' WHERE id=$1", [payoutFailure]);
     const submitted = await request(`/v1/jobs/${disputed}/submissions`, disputeDoerToken, {
       summary: "Completed the requested design work.",
       deliverable: "https://example.com/deliverable",
@@ -184,6 +204,22 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
       expect.arrayContaining(["job.claimed", "job.submitted", "job.disputed"]),
     );
 
+    const queue = await get("/v1/team/disputes", teamToken, teamCookie);
+    expect(queue.body.data).toEqual(expect.arrayContaining([expect.objectContaining({ id: payoutFailure, reviewType: "settlement_failure" })]));
+    const failedPayoutReview = await get(`/v1/team/disputes/${payoutFailure}`, teamToken, teamCookie);
+    expect(failedPayoutReview.body.data).toMatchObject({
+      reviewType: "settlement_failure",
+      dispute: { reason: expect.stringContaining("recipient rejected during gas estimation") },
+    });
+    const payoutDecision = await request(`/v1/team/disputes/${payoutFailure}/resolve`, teamToken, {
+      outcome: "refund_client", note: "The submitted recipient cannot receive the transfer; return the job principal to the client.",
+    }, teamCookie);
+    expect(payoutDecision.status).toBe(202);
+    const recovery = await db.query<{ outcome: string; recipient: string; error: string | null }>(
+      "SELECT outcome,recipient,error FROM job_settlements WHERE job_id=$1", [payoutFailure],
+    );
+    expect(recovery.rows[0]).toMatchObject({ outcome: "refund_client", recipient: clientWallet, error: null });
+
     const resolved = await request(`/v1/team/disputes/${disputed}/resolve`, teamToken, {
       outcome: "pay_doer",
       note: "The submitted evidence satisfies the agreed acceptance criteria.",
@@ -202,9 +238,12 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
     expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
     expect((await get("/v1/team/auth/status", teamToken)).status).toBe(401);
   } finally {
-    server.closeAllConnections?.();
-    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+      server.closeAllConnections?.();
+    });
     if (jobIds.length) {
+      await db.query("DELETE FROM job_settlement_reviews WHERE job_id=ANY($1::uuid[])", [jobIds]);
       await db.query("DELETE FROM job_settlements WHERE job_id=ANY($1::uuid[])", [jobIds]);
       await db.query("DELETE FROM job_events WHERE job_id=ANY($1::uuid[])", [jobIds]);
       await db.query("DELETE FROM job_disputes WHERE job_id=ANY($1::uuid[])", [jobIds]);
@@ -214,6 +253,7 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
       await db.query("DELETE FROM job_escrow_wallets WHERE job_id=ANY($1::uuid[])", [jobIds]);
       await db.query("DELETE FROM jobs WHERE id=ANY($1::uuid[])", [jobIds]);
     }
+    if (nonceWallets.length) await db.query("DELETE FROM auth_nonces WHERE wallet_address=ANY($1::text[])", [nonceWallets]);
     if (userIds.length) {
       await db.query("DELETE FROM sessions WHERE user_id=ANY($1::uuid[])", [userIds]);
       await db.query("DELETE FROM users WHERE id=ANY($1::uuid[])", [userIds]);

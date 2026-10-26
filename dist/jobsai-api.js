@@ -39,6 +39,7 @@
     createJob: (input, token) => request('/v1/jobs', { method: 'POST', token, body: input }),
     fundJob: (jobId, transactionHash, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/fund`, { method: 'POST', token, body: { transactionHash } }),
     cancelJob: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST', token, body: {} }),
+    updatePayoutRecipient: (jobId, address, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/payout-recipient`, { method: 'POST', token, body: { address } }),
     issueNonce: address => request('/v1/auth/nonce', { method: 'POST', body: { address } }),
     verifyWallet: credentials => request('/v1/auth/verify', { method: 'POST', body: credentials }),
     logout: token => request('/v1/auth/logout', { method: 'POST', token }),

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { amountSchema, createJobInputSchema, parseDeadline, parseJobAmount, submissionInputSchema } from "../src/job-input.js";
+import { amountSchema, assertMinimumJobAmount, createJobInputSchema, parseDeadline, parseJobAmount, submissionInputSchema } from "../src/job-input.js";
 
 describe("job and submission input", () => {
   test("validates and normalizes job details", () => {
@@ -20,6 +20,15 @@ describe("job and submission input", () => {
     expect(parseJobAmount("usdg", "12.345678", 6)).toBe(12_345_678n);
     expect(() => parseJobAmount("usdg", "0.0000001", 6)).toThrow("too many decimal places");
     expect(() => parseJobAmount("eth", "0", 18)).toThrow("greater than zero");
+  });
+
+  test("enforces each asset minimum without converting between assets", () => {
+    const ethMinimum = parseJobAmount("eth", "0.001", 6);
+    const usdgMinimum = parseJobAmount("usdg", "1", 6);
+    expect(() => assertMinimumJobAmount(parseJobAmount("eth", "0.0009", 6), ethMinimum, "eth")).toThrow("minimum");
+    expect(() => assertMinimumJobAmount(parseJobAmount("usdg", "0.99", 6), usdgMinimum, "usdg")).toThrow("minimum");
+    expect(() => assertMinimumJobAmount(ethMinimum, ethMinimum, "eth")).not.toThrow();
+    expect(() => assertMinimumJobAmount(usdgMinimum, usdgMinimum, "usdg")).not.toThrow();
   });
 
   test("validates submissions and future deadlines", () => {

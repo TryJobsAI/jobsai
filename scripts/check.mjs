@@ -22,7 +22,7 @@ for(const file of await walk(root)){
 const app=await readFile(resolve(root,'app.js'),'utf8');const workspace=await readFile(resolve(root,'workspace.js'),'utf8');
 for(const [name,code] of [['app',app],['workspace',workspace]])if(/innerHTML|eval\(|new Function|XMLHttpRequest|document\.write/.test(code))errors.push(`Review dynamic content surface in ${name}`);
 const home=await readFile(resolve(root,'index.html'),'utf8');
-for(const phrase of ['Go after the','Pay only after it passes','14-day full refund','Unused credits refunded','not independent of JobsAI'])if(!home.includes(phrase))errors.push(`Missing revised requirement: ${phrase}`);
+for(const phrase of ['Go after the','Payment starts when you accept','A worker delivers.','Automated rule checks and model-assisted dispute support are planned, not active.'])if(!home.includes(phrase))errors.push(`Missing current product copy: ${phrase}`);
 if(/Land the job|Pay only when it passes|Skill-proof/.test(home))errors.push('Superseded copy found');
 if(errors.length){console.error(errors.join('\n'));process.exit(1);}
 console.log(`PASS: JavaScript syntax, ${checked} local asset/route/anchor references, revised copy requirements, and focused client security checks.`);

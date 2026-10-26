@@ -24,14 +24,14 @@ function InformationDialog({ info, onClose }) {
 function WorkflowDialog({ dialog, onClose, onSubmit, onVideoHelp, busy }) {
   if (!dialog) return null;
   const { mode, job } = dialog;
-  if (mode === 'submit' || mode === 'revision' || mode === 'dispute') {
+  if (mode === 'submit' || mode === 'revision' || mode === 'dispute' || mode === 'payout') {
     const isSubmit = mode === 'submit';
-    const title = isSubmit ? 'Submit your work' : mode === 'revision' ? 'Request a revision' : 'Open a dispute';
+    const title = isSubmit ? 'Submit your work' : mode === 'revision' ? 'Request a revision' : mode === 'payout' ? 'Update payout wallet' : 'Open a dispute';
     return <div className="workspace-overlay"><section className="workspace-modal workspace-information workflow-dialog" role="dialog" aria-modal="true" aria-labelledby="workflow-dialog-title">
       <span className="workspace-modal-symbol" aria-hidden="true">{isSubmit ? '↗' : 'i'}</span><h2 id="workflow-dialog-title">{title}</h2><p>{job.title}</p>
       <form onSubmit={onSubmit}>
-        {isSubmit ? <><label>Work summary<textarea name="summary" required maxLength="10000" rows="3" /></label><label>Deliverable details or link<textarea name="deliverable" required maxLength="100000" rows="4" /></label><label>Attach images<input className="submission-image-input" type="file" name="images" accept="image/jpeg,image/png,image/webp,image/gif" multiple /></label><button type="button" className="text-info-button video-upload-help" onClick={onVideoHelp}>Submitting a video?</button><label>Evidence links, one per line (optional)<textarea name="evidence" rows="2" /></label></> : <label>{mode === 'revision' ? 'What needs to change?' : 'Describe the dispute'}<textarea name="message" required maxLength="10000" rows="5" /></label>}
-        <div className="workflow-dialog-actions"><button type="button" className="pill outline" onClick={onClose} disabled={busy}>Cancel</button><button className="pill primary" type="submit" disabled={busy}>{busy ? 'Submitting…' : isSubmit ? 'Submit work' : mode === 'revision' ? 'Send revision request' : 'Open dispute'}</button></div>
+        {isSubmit ? <><label>Work summary<textarea name="summary" required maxLength="10000" rows="3" /></label><label>Deliverable details or link<textarea name="deliverable" required maxLength="100000" rows="4" /></label><label>Attach images<input className="submission-image-input" type="file" name="images" accept="image/jpeg,image/png,image/webp,image/gif" multiple /></label><button type="button" className="text-info-button video-upload-help" onClick={onVideoHelp}>Submitting a video?</button><label>Evidence links, one per line (optional)<textarea name="evidence" rows="2" /></label></> : mode === 'payout' ? <><p>The previous payout attempt could not be completed. Enter a wallet that can receive this job’s listed asset. Settlement will retry after you save.</p><label>New payout wallet<input name="address" required pattern="0x[a-fA-F0-9]{40}" defaultValue={job.payoutRecipient || ''} autoComplete="off" /></label></> : <label>{mode === 'revision' ? 'What needs to change?' : 'Describe the dispute'}<textarea name="message" required maxLength="10000" rows="5" /></label>}
+        <div className="workflow-dialog-actions"><button type="button" className="pill outline" onClick={onClose} disabled={busy}>Cancel</button><button className="pill primary" type="submit" disabled={busy}>{busy ? 'Submitting…' : isSubmit ? 'Submit work' : mode === 'revision' ? 'Send revision request' : mode === 'payout' ? 'Save wallet and retry' : 'Open dispute'}</button></div>
       </form>
     </section></div>;
   }
@@ -124,6 +124,10 @@ function MyWork({ session, walletAddress }) {
       void submitWork(job, form, images, links);
     } else if (dialog.mode === 'revision') {
       void doAction('Sending revision request', 'Adding the requested changes to the job history…', () => JobsAIAPI.requestRevision(job.id, form.get('message'), session.token), 'Revision requested', 'The worker can now submit another version. Earlier submissions remain in the job history.');
+    } else if (dialog.mode === 'payout') {
+      const address = String(form.get('address') || '').trim();
+      if (!/^0x[a-fA-F0-9]{40}$/.test(address)) return;
+      void doAction('Updating payout wallet', 'Saving the recipient and retrying the escrow payout…', () => JobsAIAPI.updatePayoutRecipient(job.id, address, session.token), 'Payout retry started', 'JobsAI saved the new payout wallet and queued the settlement retry.');
     } else {
       void doAction('Opening dispute', 'Locking the job while the team reviews its history…', () => JobsAIAPI.openDispute(job.id, form.get('message'), session.token), 'Dispute opened', 'The job is locked pending team review.');
     }
@@ -160,6 +164,7 @@ function MyWork({ session, walletAddress }) {
         <button className="pill outline" onClick={() => openReview(job)}>View job history</button>
         {canSubmit && <button className="pill primary" onClick={() => setDialog({ mode: 'submit', job })}>Submit work</button>}
         {isDoer && job.status === 'in_progress' && <button className="pill outline" disabled={busy} onClick={() => unclaim(job)}>Unclaim job</button>}
+        {isDoer && job.payoutRecoveryAvailable && <button className="pill primary" disabled={busy} onClick={() => setDialog({ mode: 'payout', job })}>Update payout wallet</button>}
         {canDispute && <button className="pill outline" onClick={() => setDialog({ mode: 'dispute', job })}>Open dispute</button>}
       </div></article>;
     })}</div>
