@@ -7,6 +7,9 @@ describe("encrypted secrets and payloads", () => {
     expect(decryptSecret(encrypted, "job-escrow:job-1")).toBe("private-key");
     expect(() => decryptSecret(encrypted, "job-escrow:job-2")).toThrow();
     expect(() => decryptSecret(`${encrypted}.bad`, "job-escrow:job-1")).toThrow();
+    const [iv, ciphertext, tag] = encrypted.split(".");
+    const shortTag = Buffer.from(tag, "base64url").subarray(0, 12).toString("base64url");
+    expect(() => decryptSecret(`${iv}.${ciphertext}.${shortTag}`, "job-escrow:job-1")).toThrow();
   });
 
   test("round trips encrypted payloads and produces stable keyed digests", () => {

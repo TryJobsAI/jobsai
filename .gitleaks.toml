@@ -1,0 +1,20 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Generated RainbowKit bundles contain public wallet-project metadata, not credentials."
+paths = [
+  '''(?i)(^|/)dist/wallet/chunks/.*\.js$''',
+]
+
+[[allowlists]]
+description = "Reviewed non-secret settings and placeholder examples in old commits."
+regexTarget = "match"
+regexes = [
+  '''(?i)^USDG_TOKEN_ADDRESS=(?:0x0{40})?$''',
+  '''(?i)^GAS_WALLET_PRIVATE_KEY=replace-with-0x-and-64-hex-private-key$''',
+  '''(?i)^AUTH_TOKEN_PEPPER=replace-with-at-least-32-random-characters$''',
+  '''(?i)^DATA_ENCRYPTION_KEY=replace-with-a-different-32-character-secret$''',
+  '''(?i)^jobsai-ci-encryption-key-0123456789abcdef$''',
+  '''(?i)^jobsai-ci-cron-secret-0123456789abcdef$''',
+]
