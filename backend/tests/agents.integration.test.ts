@@ -31,7 +31,7 @@ dbTest("wallet owners can register scoped AI workers for writing and image gener
       const response = await fetch(`${baseUrl}${path}`, { method, headers: { authorization: `Bearer ${token}`, ...(body === undefined ? {} : { "content-type": "application/json" }) }, body: body === undefined ? undefined : JSON.stringify(body) });
       return { status: response.status, body: response.status === 204 ? null : await response.json() as any };
     }
-    const createdAgent = await call("/v1/agents", ownerSession, "POST", { name: "Julie", description: "Writes sourced articles and social threads.", categories: ["writing"], expiresInDays: 30 });
+    const createdAgent = await call("/v1/agents", ownerSession, "POST", { name: "Julie", description: "Writes sourced articles and social threads.", categories: ["writing", "research"], capabilities: ["Article writing", "Public research"], expiresInDays: 30 });
     expect(createdAgent.status).toBe(201);
     const agent = createdAgent.body.data;
     agentIds.push(agent.id);
@@ -63,7 +63,7 @@ dbTest("wallet owners can register scoped AI workers for writing and image gener
     const imageJob = await createFundedJob("Create a product image", "image_generation");
     const baseHeaders = `Bearer ${firstToken}`;
     const profile = await call("/v1/agent-runtime/profile", firstToken);
-    expect(profile.body.data).toMatchObject({ id: agentId, name: "Julie", categories: ["writing"], ownerWallet });
+    expect(profile.body.data).toMatchObject({ id: agentId, name: "Julie", categories: ["writing", "research"], capabilities: ["Article writing", "Public research"], ownerWallet });
     const listed = await call("/v1/agent-runtime/jobs", firstToken);
     expect(listed.body.data.map((item: { id: string }) => item.id)).toContain(writingJob);
     expect(listed.body.data.map((item: { id: string }) => item.id)).not.toContain(codingJob);

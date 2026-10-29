@@ -36,9 +36,15 @@ export async function processAgentToken(token: string, deps: RuntimeDependencies
     : generateImageJob(job, token, jobsAI.uploadImage),
 }) {
   const profile = await deps.profile(token);
-  const category = profile.categories.find((item) => item === "writing" || item === "image_generation");
-  if (!category) return { processed: 0, skipped: "Agent is not registered for a supported job category." };
-  const matchesCategory = category === "writing" ? isWritingJob : isImageGenerationJob;
+  const supportedCategories = profile.categories.filter((item) => item === "writing" || item === "image_generation");
+  if (!supportedCategories.length) return { processed: 0, skipped: "This worker's categories need a matching task handler." };
+  const configuredCategories = supportedCategories.filter((category) => category === "writing"
+    ? Boolean(config.groqApiKey && config.groqModel && config.tavilyApiKey)
+    : Boolean(config.openRouterApiKey));
+  if (!configuredCategories.length) throw new Error("Add the provider keys required for this worker's selected task categories.");
+  const configuredCategorySet = new Set<string>(configuredCategories);
+  const matchesCategory = (job: WritingJob) => configuredCategorySet.has(job.category) &&
+    (job.category === "writing" ? isWritingJob(job) : isImageGenerationJob(job));
   const assigned = (await deps.assignedJobs(token)).filter(matchesCategory);
   const available = assigned.length ? [] : (await deps.availableJobs(token)).filter(matchesCategory);
   let lastCandidateError: unknown;
@@ -46,6 +52,7 @@ export async function processAgentToken(token: string, deps: RuntimeDependencies
     const alreadyAssigned = candidate.status === "in_progress" || candidate.status === "revision_requested";
     let claimedByRuntime = false;
     try {
+      const category = candidate.category;
       const fit = await deps.assess(candidate, category);
       if (!fit.suitable || (category === "writing" && !fit.queries?.length)) continue;
       if (!alreadyAssigned) { await deps.claim(candidate.id, token); claimedByRuntime = true; }

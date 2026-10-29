@@ -18,7 +18,9 @@ const tokenLifetimeDays = z.number().int().min(1).max(365).default(90);
 const agentInput = z.object({
   name: z.string().trim().min(2).max(60),
   description: z.string().trim().min(1).max(2_000),
-  categories: z.array(z.enum(["writing", "image_generation"])).length(1),
+  categories: z.array(z.enum(jobCategories)).min(1).max(jobCategories.length)
+    .refine((categories) => new Set(categories).size === categories.length, "Choose each work category once."),
+  capabilities: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
   expiresInDays: tokenLifetimeDays,
 }).strict();
 
@@ -33,7 +35,7 @@ export function hashAgentRuntimeToken(token: string) {
 declare global {
   namespace Express {
     interface Request {
-      agentRuntime?: { agentId: string; ownerUserId: string; ownerWallet: string; name: string; categories: string[] };
+      agentRuntime?: { agentId: string; ownerUserId: string; ownerWallet: string; name: string; categories: string[]; capabilities: string[] };
     }
   }
 }
@@ -42,8 +44,8 @@ async function requireAgentRuntime(request: Request, _response: Response, next: 
   try {
     const token = request.header("authorization")?.match(/^Bearer\s+(jsai_agent_[A-Za-z0-9_-]+)$/)?.[1];
     if (!token) throw new ApiError(401, "agent_runtime_unauthenticated", "A JobsAI agent runtime token is required.");
-    const result = await db.query<{ token_id: string; agent_id: string; owner_user_id: string; owner_wallet: string; name: string; categories: string[] }>(
-      `SELECT t.id AS token_id,a.id AS agent_id,a.owner_user_id,u.wallet_address AS owner_wallet,a.name,a.categories
+    const result = await db.query<{ token_id: string; agent_id: string; owner_user_id: string; owner_wallet: string; name: string; categories: string[]; capabilities: string[] }>(
+      `SELECT t.id AS token_id,a.id AS agent_id,a.owner_user_id,u.wallet_address AS owner_wallet,a.name,a.categories,a.capabilities
          FROM ai_agent_runtime_tokens t JOIN ai_agents a ON a.id=t.agent_id JOIN users u ON u.id=a.owner_user_id
         WHERE t.token_hash=$1 AND t.revoked_at IS NULL AND t.expires_at>now() AND a.active`,
       [hashAgentRuntimeToken(token)],
@@ -51,14 +53,14 @@ async function requireAgentRuntime(request: Request, _response: Response, next: 
     const agent = result.rows[0];
     if (!agent) throw new ApiError(401, "agent_runtime_invalid", "This agent token is expired, revoked, or inactive.");
     await db.query("UPDATE ai_agent_runtime_tokens SET last_used_at=now() WHERE id=$1", [agent.token_id]);
-    request.agentRuntime = { agentId: agent.agent_id, ownerUserId: agent.owner_user_id, ownerWallet: agent.owner_wallet, name: agent.name, categories: agent.categories };
+    request.agentRuntime = { agentId: agent.agent_id, ownerUserId: agent.owner_user_id, ownerWallet: agent.owner_wallet, name: agent.name, categories: agent.categories, capabilities: agent.capabilities };
     next();
   } catch (error) { next(error); }
 }
 
 agentsRouter.get("/", requireAuth, asyncRoute(async (request, response) => {
   const result = await db.query(
-    `SELECT a.id,a.name,a.description,a.categories,a.active,a.created_at AS "createdAt",
+    `SELECT a.id,a.name,a.description,a.categories,a.capabilities,a.active,a.created_at AS "createdAt",
             t.expires_at AS "runtimeExpiresAt",t.last_used_at AS "lastRuntimeSeen",
             (t.last_used_at>now()-interval '2 minutes') AS "runtimeRecentlyActive"
        FROM ai_agents a LEFT JOIN LATERAL (
@@ -79,8 +81,8 @@ agentsRouter.post("/", requireAuth, asyncRoute(async (request, response) => {
   try {
     await client.query("BEGIN");
     const created = await client.query<{ id: string }>(
-      `INSERT INTO ai_agents(owner_user_id,name,description,categories) VALUES($1,$2,$3,$4) RETURNING id`,
-      [request.auth!.userId,input.name,input.description,input.categories],
+      `INSERT INTO ai_agents(owner_user_id,name,description,categories,capabilities) VALUES($1,$2,$3,$4,$5) RETURNING id`,
+      [request.auth!.userId,input.name,input.description,input.categories,input.capabilities],
     );
     const tokenRow = await client.query<{ expires_at: Date }>(
       `INSERT INTO ai_agent_runtime_tokens(agent_id,token_hash,expires_at)
@@ -88,7 +90,7 @@ agentsRouter.post("/", requireAuth, asyncRoute(async (request, response) => {
       [created.rows[0].id,hashAgentRuntimeToken(token),lifetime],
     );
     await client.query("COMMIT");
-    response.status(201).json({ data: { id: created.rows[0].id,name: input.name,description: input.description,categories: input.categories,active: true,runtimeToken: token,runtimeExpiresAt: tokenRow.rows[0].expires_at }, tokenWarning: "Copy this token now. It is shown only once." });
+    response.status(201).json({ data: { id: created.rows[0].id,name: input.name,description: input.description,categories: input.categories,capabilities: input.capabilities,active: true,runtimeToken: token,runtimeExpiresAt: tokenRow.rows[0].expires_at }, tokenWarning: "Copy this token now. It is shown only once." });
   } catch (error) { await client.query("ROLLBACK").catch(() => undefined); throw error; }
   finally { client.release(); }
 }));
@@ -150,8 +152,8 @@ agentRuntimeRouter.post("/jobs/:id/images", express.raw({ type: [...IMAGE_CONTEN
 }));
 
 agentRuntimeRouter.get("/profile", (request,response) => {
-  const { agentId,name,categories,ownerWallet } = request.agentRuntime!;
-  response.json({ data:{ id:agentId,name,categories,ownerWallet } });
+  const { agentId,name,categories,capabilities,ownerWallet } = request.agentRuntime!;
+  response.json({ data:{ id:agentId,name,categories,capabilities,ownerWallet } });
 });
 
 agentRuntimeRouter.get("/assigned-jobs", asyncRoute(async (request,response) => {

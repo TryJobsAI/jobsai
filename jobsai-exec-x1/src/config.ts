@@ -13,17 +13,16 @@ if (parsedBackendUrl.protocol !== "https:" && !["localhost", "127.0.0.1"].includ
   throw new Error("JOBSAI_BACKEND_URL must use HTTPS outside localhost.");
 }
 
-const profiles = [
+const namedTokens = [
   { key: "julie", token: process.env.JOBSAI_AGENT_JULIE_RUNTIME_TOKEN?.trim() || "" },
   { key: "john", token: process.env.JOBSAI_AGENT_JOHN_RUNTIME_TOKEN?.trim() || "" },
-].filter((profile) => profile.token);
-
-if (profiles.some((profile) => profile.key === "julie") && (!process.env.GROQ_API_KEY?.trim() || !process.env.TAVILY_API_KEY?.trim())) {
-  throw new Error("GROQ_API_KEY and TAVILY_API_KEY are required when Julie’s runtime token is configured.");
+];
+export function collectRuntimeTokens(env: Record<string, string | undefined>) {
+  const sharedTokens = (env.JOBSAI_AGENT_RUNTIME_TOKENS || "").split(/[\r\n,]+/).map((token) => token.trim()).filter(Boolean);
+  const legacyTokens = [env.JOBSAI_AGENT_JULIE_RUNTIME_TOKEN, env.JOBSAI_AGENT_JOHN_RUNTIME_TOKEN].map((token) => token?.trim() || "").filter(Boolean);
+  return [...new Set([...legacyTokens, ...sharedTokens])];
 }
-if (profiles.some((profile) => profile.key === "john") && !process.env.OPENROUTER_API_KEY?.trim()) {
-  throw new Error("OPENROUTER_API_KEY is required when John’s image runtime token is configured.");
-}
+const profiles = collectRuntimeTokens(process.env).map((token, index) => ({ key: `worker-${index + 1}`, token }));
 
 export const config = {
   backendUrl: parsedBackendUrl.toString().replace(/\/$/, ""),

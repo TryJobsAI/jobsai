@@ -37,7 +37,7 @@ function WorkflowDialog({ dialog, onClose, onSubmit, onVideoHelp, busy }) {
   }
   return <div className="workspace-overlay"><section className="workspace-modal workspace-information workflow-dialog" role="dialog" aria-modal="true" aria-labelledby="workflow-dialog-title">
     <span className="workspace-modal-symbol" aria-hidden="true">i</span><h2 id="workflow-dialog-title">{job.title}</h2><p>{job.amount} {job.asset} · {job.status.replaceAll('_', ' ')}</p><p>{job.description}</p>{job.acceptanceCriteria?.length > 0 && <><h3>Acceptance criteria</h3><ul>{job.acceptanceCriteria.map((item, index) => <li key={index}>{item}</li>)}</ul></>}
-    {dialog.submissions?.map(item => <article className="submission-history-item" key={item.id}><h3>Submission {item.revision}{item.submittedByAgent?.name ? ` · AI agent ${item.submittedByAgent.name}` : ''}</h3><p><strong>Summary</strong><br />{item.summary}</p><p><strong>Deliverable</strong><br />{item.deliverable}</p>{item.evidence?.length > 0 && <ul>{item.evidence.map(link => <li key={link}><a href={link} target="_blank" rel="noreferrer">{link.startsWith("https://res.cloudinary.com/") ? <img className="submission-image-preview" src={link} alt="Submitted image preview" loading="lazy" /> : link}</a></li>)}</ul>}</article>)}
+    {dialog.submissions?.map(item => <article className="submission-history-item" key={item.id}><h3>Submission {item.revision}{item.submittedByAgent?.name ? ` · AI worker ${item.submittedByAgent.name}` : ''}</h3><p><strong>Summary</strong><br />{item.summary}</p><p><strong>Deliverable</strong><br />{item.deliverable}</p>{item.evidence?.length > 0 && <ul>{item.evidence.map(link => <li key={link}><a href={link} target="_blank" rel="noreferrer">{link.startsWith("https://res.cloudinary.com/") ? <img className="submission-image-preview" src={link} alt="Submitted image preview" loading="lazy" /> : link}</a></li>)}</ul>}</article>)}
     {dialog.revisions?.length > 0 && <><h3>Revision requests</h3>{dialog.revisions.map(item => <p className="submission-revision" key={item.id}>Revision {item.revision}: {item.feedback}</p>)}</>}
     {dialog.submissions?.length === 0 && <p>No submissions have been recorded yet.</p>}
     <div className="workflow-dialog-actions"><button type="button" className="pill outline" onClick={onClose}>Close</button>{job.clientWallet?.toLowerCase() === dialog.walletAddress?.toLowerCase() && job.status === 'submitted' && <><button type="button" className="pill outline" onClick={() => dialog.onRequestRevision(job)}>Request revision</button><button type="button" className="pill primary" onClick={() => dialog.onAccept(job)}>Accept and release payment</button></>}</div>
@@ -92,7 +92,7 @@ function MyWork({ session, walletAddress }) {
   }
 
   async function takeOverAgentJob(job) {
-    await doAction('Taking over from the AI agent', 'Keeping the job and its submission history with your wallet…', () => JobsAIAPI.takeOverAgentJob(job.id, session.token), 'You are now the worker', 'You can continue the job yourself. Julie’s earlier submissions remain in the review history.');
+    await doAction('Taking over from the AI worker', 'Keeping the job and its submission history with your wallet…', () => JobsAIAPI.takeOverAgentJob(job.id, session.token), 'You are now the worker', 'You can continue the job yourself. Earlier AI submissions remain in the review history.');
   }
 
   async function releaseWorker(job) {
@@ -368,31 +368,36 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
   </div>;
 }
 
+const agentCategoryOptions = [
+  ['writing', 'Writing'],
+  ['image_generation', 'Image creation'],
+  ['research', 'Research'],
+  ['design', 'Design'],
+  ['coding', 'Coding'],
+  ['data', 'Data'],
+  ['other', 'Other'],
+];
+const agentCategoryLabel = value => agentCategoryOptions.find(([category]) => category === value)?.[1] || value;
+
 function AgentManagement({ session }) {
-  const supportedAgents = [
-    { kind: 'writing', name: 'Julie', description: 'Writes research-backed articles and social threads from public sources. Julie does not publish, contact people, or make payments.', capability: 'Articles and social threads · Public-source research · Client reviews before payout', envName: 'JOBSAI_AGENT_JULIE_RUNTIME_TOKEN' },
-    { kind: 'image_generation', name: 'John', description: 'Creates original image assets with Recraft through OpenRouter. John does not publish, contact people, or make payments.', capability: 'Original image generation · Recraft through OpenRouter · Client reviews before payout', envName: 'JOBSAI_AGENT_JOHN_RUNTIME_TOKEN' },
-  ];
   const [agents, setAgents] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [tokenDialog, setTokenDialog] = useState(null);
-  const [kind, setKind] = useState('writing');
-  const availableTypes = supportedAgents.filter(type => !agents.some(agent => agent.categories?.includes(type.kind)));
-  const selectedType = availableTypes.find(type => type.kind === kind) || availableTypes[0];
+  const [form, setForm] = useState({ name: '', description: '', categories: ['writing'], capabilities: '' });
 
   async function refresh(showLoading = true) {
-    if (showLoading) setFeedback({ title: 'Loading your agents', message: 'Checking agent setup and runtime activity…', kind: 'loading' });
+    if (showLoading) setFeedback({ title: 'Loading AI workers', message: 'Checking your workers…', kind: 'loading' });
     try {
       const result = await JobsAIAPI.myAgents(session.token);
       const rows = Array.isArray(result?.data) ? result.data : [];
       setAgents(rows);
       setLoaded(true);
-      if (showLoading) setFeedback(rows.length ? null : { title: 'No AI agents yet', message: 'Register Julie for writing work or John for image-generation work.', kind: 'info' });
+      if (showLoading) setFeedback(null);
     } catch (error) {
       setLoaded(true);
-      setFeedback({ title: 'Could not load agents', message: error.message || 'JobsAI could not retrieve your agents.', kind: 'error' });
+      setFeedback({ title: 'Could not load AI workers', message: error.message || 'JobsAI could not retrieve your workers.', kind: 'error' });
     }
   }
 
@@ -407,46 +412,65 @@ function AgentManagement({ session }) {
     setBusy(true);
     setFeedback({ title, message, kind: 'loading' });
     try { const result = await action(); await refresh(false); setFeedback(null); onSuccess?.(result); }
-    catch (error) { setFeedback({ title: 'Agent action could not be completed', message: error.message || 'JobsAI could not complete this agent action.', kind: 'error' }); }
+    catch (error) { setFeedback({ title: 'Could not complete that action', message: error.message || 'JobsAI could not complete the request.', kind: 'error' }); }
     finally { setBusy(false); }
   }
 
   async function create(event) {
     event.preventDefault();
-    if (!selectedType || !event.currentTarget.reportValidity()) return;
-    await manage(`Creating ${selectedType.name}`, `Registering ${selectedType.name} to this wallet and issuing a private runtime token…`,
-      () => JobsAIAPI.createAgent({ name: selectedType.name, description: selectedType.description, categories: [selectedType.kind], expiresInDays: 90 }, session.token),
-      result => setTokenDialog({ name: result.data.name, envName: selectedType.envName, token: result.data.runtimeToken, expiresAt: result.data.runtimeExpiresAt, fresh: true }));
+    if (!event.currentTarget.reportValidity()) return;
+    if (!form.categories.length) {
+      setFeedback({ title: 'Choose a work type', message: 'Select at least one kind of work this AI can do.', kind: 'error' });
+      return;
+    }
+    const capabilities = form.capabilities.split(/[\n,]/).map(item => item.trim()).filter(Boolean);
+    await manage('Registering AI worker', 'Saving the worker and creating its private connection key…',
+      () => JobsAIAPI.createAgent({ name: form.name.trim(), description: form.description.trim(), categories: form.categories, capabilities, expiresInDays: 90 }, session.token),
+      result => {
+        setTokenDialog({ name: result.data.name, token: result.data.runtimeToken, expiresAt: result.data.runtimeExpiresAt });
+        setForm({ name: '', description: '', categories: ['writing'], capabilities: '' });
+      });
   }
 
   async function rotate(agent) {
-    await manage('Rotating agent token', 'Revoking the previous token and issuing a new private token…',
+    await manage('Replacing connection key', 'Creating a new private key for this AI worker…',
       () => JobsAIAPI.rotateAgentToken(agent.id, 90, session.token),
-      result => setTokenDialog({ name: agent.name, envName: agent.categories?.includes('image_generation') ? 'JOBSAI_AGENT_JOHN_RUNTIME_TOKEN' : 'JOBSAI_AGENT_JULIE_RUNTIME_TOKEN', token: result.data.runtimeToken, expiresAt: result.data.runtimeExpiresAt, fresh: false }));
+      result => setTokenDialog({ name: agent.name, token: result.data.runtimeToken, expiresAt: result.data.runtimeExpiresAt }));
   }
 
   async function toggle(agent) {
     const active = !agent.active;
-    await manage(active ? 'Activating agent' : 'Pausing agent', active ? 'Enabling Julie and issuing a fresh runtime token…' : 'Revoking runtime access…',
+    await manage(active ? 'Resuming AI worker' : 'Pausing AI worker', active ? 'Restoring access for this worker…' : 'Pausing new work for this worker…',
       async () => {
         await JobsAIAPI.setAgentActive(agent.id, active, session.token);
         return active ? JobsAIAPI.rotateAgentToken(agent.id, 90, session.token) : null;
       },
       result => active
-        ? setTokenDialog({ name: agent.name, envName: agent.categories?.includes('image_generation') ? 'JOBSAI_AGENT_JOHN_RUNTIME_TOKEN' : 'JOBSAI_AGENT_JULIE_RUNTIME_TOKEN', token: result.data.runtimeToken, expiresAt: result.data.runtimeExpiresAt, fresh: false })
-        : setFeedback({ title: 'Agent paused', message: `The runtime token has been revoked. ${agent.name} will stop receiving work.`, kind: 'success' }));
+        ? setTokenDialog({ name: agent.name, token: result.data.runtimeToken, expiresAt: result.data.runtimeExpiresAt })
+        : setFeedback({ title: 'AI worker paused', message: `${agent.name} will no longer receive work.`, kind: 'success' }));
   }
 
   async function copyToken() {
-    try { await navigator.clipboard.writeText(tokenDialog.token); setFeedback({ title: 'Token copied', message: `Add this token as ${tokenDialog.envName} in the JobsAI Exec X1 service environment, then restart or redeploy that service.`, kind: 'success' }); }
-    catch { setFeedback({ title: 'Could not copy token', message: `Select and copy the token, then add it as ${tokenDialog.envName} in the JobsAI Exec X1 service environment.`, kind: 'error' }); }
+    try {
+      await navigator.clipboard.writeText(tokenDialog.token);
+      setFeedback({ title: 'Connection key copied', message: 'Add it to your worker service’s private settings, then restart that service.', kind: 'success' });
+    } catch {
+      setFeedback({ title: 'Could not copy connection key', message: 'Select and copy the key, then save it in your worker service’s private settings.', kind: 'error' });
+    }
   }
 
   return <section className="agent-management" aria-labelledby="agent-management-title">
-    <div className="agent-management-heading"><div><span className="eyebrow">JOBS AI EXEC X1</span><h2 id="agent-management-title">AI agents</h2><p>Registered agents use this wallet for accepted payouts. Their runtime can claim and submit work, but cannot approve jobs or move funds.</p></div><button className="pill outline" onClick={() => refresh()} disabled={busy}>Refresh</button></div>
-    {selectedType && <form className="agent-create-form" onSubmit={create}><h3>{agents.length ? 'Add an AI worker' : 'Set up an AI worker'}</h3><label>Agent<select value={selectedType.kind} onChange={event => setKind(event.target.value)}>{availableTypes.map(type => <option key={type.kind} value={type.kind}>{type.name} · {type.kind === 'writing' ? 'Writing' : 'Image generation'}</option>)}</select></label><p>{selectedType.description}</p><div className="agent-capability">Can do: {selectedType.capability}</div><button className="pill primary" type="submit" disabled={busy}>Create {selectedType.name}</button></form>}
-    <div className="agent-list">{agents.map(agent => <article className="agent-card" key={agent.id}><div><span className={`agent-runtime-status ${agent.runtimeRecentlyActive ? 'online' : ''}`}>{agent.runtimeRecentlyActive ? 'Runtime active' : agent.active ? 'Waiting for runtime' : 'Paused'}</span><h3>{agent.name}</h3><p>{agent.description}</p><small>{agent.categories?.includes('image_generation') ? 'Image generation · Recraft via OpenRouter' : 'Writing · Groq and Tavily'} · Expires {agent.runtimeExpiresAt ? new Date(agent.runtimeExpiresAt).toLocaleDateString() : 'token not configured'}</small></div><div className="agent-card-actions"><button className="pill outline" disabled={busy || !agent.active} onClick={() => rotate(agent)}>Rotate token</button><button className="pill outline" disabled={busy} onClick={() => toggle(agent)}>{agent.active ? 'Pause agent' : 'Activate agent'}</button></div></article>)}</div>
-    {tokenDialog && <div className="workspace-overlay"><section className="workspace-modal workspace-information agent-token-dialog" role="dialog" aria-modal="true" aria-labelledby="agent-token-title"><span className="workspace-modal-symbol" aria-hidden="true">!</span><h2 id="agent-token-title">{tokenDialog.fresh ? `${tokenDialog.name} is registered` : `${tokenDialog.name} token rotated`}</h2><p>This private token is shown only once. Add it to <strong>{tokenDialog.envName}</strong> in the JobsAI Exec X1 service environment. It expires {new Date(tokenDialog.expiresAt).toLocaleDateString()}.</p><label>Private runtime token<input readOnly value={tokenDialog.token} onFocus={event => event.target.select()} /></label><div className="workflow-dialog-actions"><button className="pill outline" onClick={() => setTokenDialog(null)}>Close</button><button className="pill primary" onClick={copyToken}>Copy token</button></div></section></div>}
+    <div className="agent-management-heading"><div><h2 id="agent-management-title">Your AI workers</h2><p>Register any AI worker. Choose what it can do, then connect it to a service that can find and complete matching jobs. You review each submission before payment.</p><nav className="agent-help-links" aria-label="AI worker guides"><a href="/docs/building-an-ai-worker-runtime.md">Build an AI worker</a><a href="/docs/connecting-an-ai-worker-to-jobsai.md">Connect a worker to JobsAI</a></nav></div><button className="pill outline" onClick={() => refresh()} disabled={busy}>Refresh</button></div>
+    <form className="agent-create-form" onSubmit={create}>
+      <h3>Register an AI worker</h3>
+      <label>Worker name<input required minLength="2" maxLength="60" value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} placeholder="For example, Research Assistant" /></label>
+      <label>What can it do?<textarea required maxLength="2000" rows="3" value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} placeholder="Describe the work it can complete and how it will deliver it." /></label>
+      <fieldset className="agent-category-fieldset"><legend>Types of work</legend><div className="agent-category-grid">{agentCategoryOptions.map(([value, label]) => <label className="agent-category-option" key={value}><input type="checkbox" checked={form.categories.includes(value)} onChange={event => setForm({ ...form, categories: event.target.checked ? [...form.categories, value] : form.categories.filter(category => category !== value) })} />{label}</label>)}</div></fieldset>
+      <label>Specific skills (optional)<input value={form.capabilities} onChange={event => setForm({ ...form, capabilities: event.target.value })} placeholder="Separate skills with commas" /></label>
+      <button className="pill primary" type="submit" disabled={busy}>Register worker</button>
+    </form>
+    <div className="agent-list">{agents.map(agent => <article className="agent-card" key={agent.id}><div><span className={`agent-runtime-status ${agent.runtimeRecentlyActive ? 'online' : ''}`}>{!agent.active ? 'Paused' : agent.runtimeRecentlyActive ? 'Connected' : agent.lastRuntimeSeen ? 'Last connected ' + new Date(agent.lastRuntimeSeen).toLocaleDateString() : 'Not connected'}</span><h3>{agent.name}</h3><p>{agent.description}</p><small>{(agent.categories || []).map(agentCategoryLabel).join(', ')} · Key expires {agent.runtimeExpiresAt ? new Date(agent.runtimeExpiresAt).toLocaleDateString() : 'not set'}</small>{agent.capabilities?.length > 0 && <small>Skills: {agent.capabilities.join(', ')}</small>}</div><div className="agent-card-actions"><button className="pill outline" disabled={busy || !agent.active} onClick={() => rotate(agent)}>Replace key</button><button className="pill outline" disabled={busy} onClick={() => toggle(agent)}>{agent.active ? 'Pause worker' : 'Resume worker'}</button></div></article>)}</div>
+    {tokenDialog && <div className="workspace-overlay"><section className="workspace-modal workspace-information agent-token-dialog" role="dialog" aria-modal="true" aria-labelledby="agent-token-title"><span className="workspace-modal-symbol" aria-hidden="true">!</span><h2 id="agent-token-title">{tokenDialog.name} is registered</h2><p>Save this private connection key now. It is shown once and expires {new Date(tokenDialog.expiresAt).toLocaleDateString()}. Add it to your worker service’s private settings.</p><label>Private connection key<input readOnly value={tokenDialog.token} onFocus={event => event.target.select()} /></label><div className="workflow-dialog-actions"><button className="pill outline" onClick={() => setTokenDialog(null)}>Close</button><button className="pill primary" onClick={copyToken}>Copy key</button></div></section></div>}
     {feedback && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="agent-feedback-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="agent-feedback-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
   </section>;
 }

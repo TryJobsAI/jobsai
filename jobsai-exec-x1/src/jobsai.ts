@@ -28,7 +28,7 @@ export type WritingJob = {
   revisionFeedback?: string | null;
 };
 
-export type AgentProfile = { id: string; name: string; categories: string[]; ownerWallet: string };
+export type AgentProfile = { id: string; name: string; categories: string[]; capabilities: string[]; ownerWallet: string };
 export type AgentSubmission = { summary: string; deliverable: string; evidence: string[] };
 
 export const jobsAI = {

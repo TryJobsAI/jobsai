@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { processAgentToken } from "../src/worker.js";
 
-const profile = { id: "agent-id", name: "Julie", categories: ["writing"], ownerWallet: "0x1111111111111111111111111111111111111111" };
+const profile = { id: "agent-id", name: "Writing worker", categories: ["writing"], capabilities: [], ownerWallet: "0x1111111111111111111111111111111111111111" };
 const job = { id: "job-id", title: "Write a sourced article", description: "Use public sources.", acceptanceCriteria: ["Cite sources"], category: "writing" };
 
 function dependencies(overrides: Record<string, unknown> = {}) {
@@ -68,7 +68,7 @@ describe("Exec X1 worker", () => {
     const imageJob = { ...job, id: "image-job", category: "image_generation" };
     const calls: string[] = [];
     const deps = dependencies({
-      profile: async () => ({ ...profile, name: "John", categories: ["image_generation"] }),
+      profile: async () => ({ ...profile, name: "Image worker", categories: ["research", "image_generation"] }),
       availableJobs: async () => [job, imageJob],
       assess: async (_candidate: unknown, category: string) => { calls.push(`assess:${category}`); return { suitable: true }; },
       claim: async (id: string) => calls.push(`claim:${id}`),
