@@ -35,6 +35,7 @@ dbTest("wallet owners can register scoped AI workers for writing and image gener
     expect(createdAgent.status).toBe(201);
     const agent = createdAgent.body.data;
     agentIds.push(agent.id);
+    const agentId = agent.id as string;
     const firstToken = agent.runtimeToken as string;
     expect(firstToken).toMatch(/^jsai_agent_/);
     expect(createdAgent.body.tokenWarning).toContain("shown only once");
@@ -81,12 +82,6 @@ dbTest("wallet owners can register scoped AI workers for writing and image gener
     expect(overLimit.status).toBe(409);
     expect(overLimit.body.error.code).toBe("active_claim_limit");
     expect((await call(`/v1/jobs/${writingJob}/submissions`, ownerSession, "POST", { summary: "manual", deliverable: "not allowed", evidence: [] })).status).toBe(403);
-    expect((await call(`/v1/agent-runtime/jobs/${imageJob}/claim`, john.runtimeToken, "POST", {})).status).toBe(200);
-    expect((await call(`/v1/agent-runtime/jobs/${imageJob}/submissions`, john.runtimeToken, "POST", { summary: "Generated image", deliverable: "missing image", evidence: [] })).status).toBe(400);
-    const imageSubmission = await call(`/v1/agent-runtime/jobs/${imageJob}/submissions`, john.runtimeToken, "POST", { summary: "Generated original image", deliverable: "https://res.cloudinary.com/jobsai/image/upload/sample.webp", evidence: ["https://res.cloudinary.com/jobsai/image/upload/sample.webp"] });
-    expect(imageSubmission.status).toBe(201);
-    expect(imageSubmission.body.data.submittedByAgent).toMatchObject({ id: john.id, name: "John" });
-
     const firstSubmission = await call(`/v1/agent-runtime/jobs/${writingJob}/submissions`, firstToken, "POST", { summary: "First draft", deliverable: "First article", evidence: ["https://example.com/source"] });
     expect(firstSubmission.status).toBe(201);
     expect(firstSubmission.body.data.submittedByAgent).toMatchObject({ id: agentId, name: "Julie" });
@@ -115,6 +110,14 @@ dbTest("wallet owners can register scoped AI workers for writing and image gener
     const humanRevision = await call(`/v1/jobs/${takeoverJob}/submissions`, ownerSession, "POST", { summary: "Human revision", deliverable: "Completed article with a conclusion.", evidence: [] });
     expect(humanRevision.status).toBe(201);
     expect(humanRevision.body.data.revision).toBe(2);
+
+    // The CI wallet claim limit is two; free the earlier lifecycle fixtures before exercising John.
+    await db.query("UPDATE jobs SET status='cancelled',doer_id=NULL,doer_agent_id=NULL WHERE id=ANY($1::uuid[])", [[writingJob,takeoverJob]]);
+    expect((await call(`/v1/agent-runtime/jobs/${imageJob}/claim`, john.runtimeToken, "POST", {})).status).toBe(200);
+    expect((await call(`/v1/agent-runtime/jobs/${imageJob}/submissions`, john.runtimeToken, "POST", { summary: "Generated image", deliverable: "missing image", evidence: [] })).status).toBe(400);
+    const imageSubmission = await call(`/v1/agent-runtime/jobs/${imageJob}/submissions`, john.runtimeToken, "POST", { summary: "Generated original image", deliverable: "https://res.cloudinary.com/jobsai/image/upload/sample.webp", evidence: ["https://res.cloudinary.com/jobsai/image/upload/sample.webp"] });
+    expect(imageSubmission.status).toBe(201);
+    expect(imageSubmission.body.data.submittedByAgent).toMatchObject({ id: john.id, name: "John" });
   } finally {
     server.close();
     if (jobIds.length) {
