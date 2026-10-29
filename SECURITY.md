@@ -34,6 +34,17 @@ JobsAI is developing an AI tool to help organize and compare those records. A pe
 - Earlier submissions and job actions are kept in the job history. Private submission and dispute text is encrypted in the database.
 - Team review requires an approved JobsAI reviewer wallet and the team password. Team-review access lasts up to eight hours in a browser session. Changing the team password ends existing team-review sessions. A copied sign-in token may remain usable until it expires.
 
+## Planned reviewer approval for dispute payouts
+
+The current release lets one authorized reviewer choose whether a disputed job pays the worker or refunds the client. Before JobsAI handles larger balances, the planned control is a 2-of-N approval from distinct reviewer wallets:
+
+1. A first reviewer reads the complete job record and submits a proposed `pay_doer` or `refund_client` decision with a note. This proposal does not create a settlement or move funds.
+2. A second reviewer, using a different approved wallet, independently reviews the same job history and either approves that exact outcome or rejects it. A reviewer cannot approve their own proposal.
+3. The service creates the settlement only after two distinct reviewer approvals for the same outcome are recorded atomically with the job decision. A changed proposal clears prior approvals. Duplicate submissions cannot create a second settlement.
+4. The audit record retains each reviewer wallet, decision, note, and timestamp. Reviewer-wallet changes are restricted to operators and recorded.
+
+The approval threshold will fail closed if fewer than two eligible reviewer wallets are available: the dispute stays locked and no payout or refund is created until the required reviewers can act. Client acceptance and the existing pre-claim cancellation refund do not require dispute-review approval. This control is planned and is not implemented in the current release.
+
 ## Current limits
 
 - A transfer can be delayed or fail. Failed payouts with no signed payout transaction can be retried by the worker with a replacement wallet or handled through team review. Other failures may need help from the JobsAI operations team.
