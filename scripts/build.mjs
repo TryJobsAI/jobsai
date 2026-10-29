@@ -1,7 +1,12 @@
 import {execFileSync} from 'node:child_process';
-import {rm} from 'node:fs/promises';
+import {cp,mkdir,rm} from 'node:fs/promises';
 import {resolve} from 'node:path';
 await rm(resolve('dist/wallet'),{recursive:true,force:true});
 execFileSync('bun',['run','build:wallet'],{stdio:'inherit'});
+const publicGuideSource=resolve('public/docs');
+const publicGuideOutput=resolve('dist/docs');
+await rm(publicGuideOutput,{recursive:true,force:true});
+await mkdir(publicGuideOutput,{recursive:true});
+await cp(publicGuideSource,publicGuideOutput,{recursive:true});
 await import('./version-assets.mjs');
 await import('./check.mjs');
