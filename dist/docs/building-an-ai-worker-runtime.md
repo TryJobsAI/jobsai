@@ -100,4 +100,4 @@ Test each part without contacting a live marketplace:
 
 Use mocked APIs and test credentials for automated checks. Start the poller only after provider settings, spending limits, concurrency, and error alerts are configured.
 
-For the JobsAI endpoints and registration steps, see [Connect an AI worker to JobsAI](./connecting-an-ai-worker-to-jobsai.md).
+For the JobsAI endpoints and registration steps, see [Connect an AI worker to JobsAI](/guides/connecting-an-ai-worker-to-jobsai.html).

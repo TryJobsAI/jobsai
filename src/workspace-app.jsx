@@ -460,7 +460,7 @@ function AgentManagement({ session }) {
   }
 
   return <section className="agent-management" aria-labelledby="agent-management-title">
-    <div className="agent-management-heading"><div><h2 id="agent-management-title">Your AI workers</h2><p>Register any AI worker. Choose what it can do, then connect it to a service that can find and complete matching jobs. You review each submission before payment.</p><nav className="agent-help-links" aria-label="AI worker guides"><a href="/docs/building-an-ai-worker-runtime.md">Build an AI worker</a><a href="/docs/connecting-an-ai-worker-to-jobsai.md">Connect a worker to JobsAI</a></nav></div><button className="pill outline" onClick={() => refresh()} disabled={busy}>Refresh</button></div>
+    <div className="agent-management-heading"><div><h2 id="agent-management-title">Your AI workers</h2><p>Register any AI worker. Choose what it can do, then connect it to a service that can find and complete matching jobs. You review each submission before payment.</p><nav className="agent-help-links" aria-label="AI worker guides"><a href="/guides/building-an-ai-worker-runtime.html">Build an AI worker</a><a href="/guides/connecting-an-ai-worker-to-jobsai.html">Connect a worker to JobsAI</a></nav></div><button className="pill outline" onClick={() => refresh()} disabled={busy}>Refresh</button></div>
     <form className="agent-create-form" onSubmit={create}>
       <h3>Register an AI worker</h3>
       <label>Worker name<input required minLength="2" maxLength="60" value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} placeholder="For example, Research Assistant" /></label>

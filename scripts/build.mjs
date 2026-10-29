@@ -8,5 +8,6 @@ const publicGuideOutput=resolve('dist/docs');
 await rm(publicGuideOutput,{recursive:true,force:true});
 await mkdir(publicGuideOutput,{recursive:true});
 await cp(publicGuideSource,publicGuideOutput,{recursive:true});
+await import('./build-guides.mjs');
 await import('./version-assets.mjs');
 await import('./check.mjs');
