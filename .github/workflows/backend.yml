@@ -37,12 +37,13 @@ jobs:
       NODE_ENV: test
       DATABASE_URL: postgresql://jobsai:jobsai@127.0.0.1:5432/jobsai_test
       JOBSAI_DB_INTEGRATION: "1"
+      JOBSAI_ANVIL_INTEGRATION: "1"
       MAX_ACTIVE_CLAIMS_PER_WALLET: "2"
       RH_CHAIN_ID: "46630"
       RH_RPC_URL: http://127.0.0.1:8545
-      USDG_TOKEN_ADDRESS: "0x0000000000000000000000000000000000000001"
+      USDG_TOKEN_ADDRESS: ""
       USDG_DECIMALS: "6"
-      RH_CONFIRMATIONS: "2"
+      RH_CONFIRMATIONS: "1"
       AUTH_DOMAIN: localhost
       AUTH_URI: http://localhost:3001
       AUTH_TOKEN_PEPPER: jobsai-ci-auth-pepper-0123456789abcdef
@@ -69,9 +70,49 @@ jobs:
         working-directory: backend
         run: bun run check
 
-      - name: Run unit tests and PostgreSQL route integration tests
+      - uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf
+        with:
+          version: v1.8.5
+
+      - name: Start local Anvil chain
+        run: |
+          anvil_key=$(printf '0x%s%s%s%s' 'ac0974bec39a17e3' '6ba4a6b4d238ff94' '4bacb478cbed5efc' 'ae784d7bf4f2ff80')
+          echo "ANVIL_TEST_PRIVATE_KEY=$anvil_key" >> "$GITHUB_ENV"
+          unset anvil_key
+          anvil --chain-id 46630 --host 127.0.0.1 --port 8545 --accounts 10 --balance 10000 >/tmp/jobsai-anvil.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if cast chain-id --rpc-url "$RH_RPC_URL" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          test "$(cast chain-id --rpc-url "$RH_RPC_URL")" = "46630"
+
+      - name: Deploy local USDG mock
         working-directory: backend
-        run: bun run test
+        run: |
+          forge create contracts/MockUSDG.sol:MockUSDG --rpc-url "$RH_RPC_URL" --private-key "$ANVIL_TEST_PRIVATE_KEY" --broadcast --json >/tmp/jobsai-usdg-deployment.json
+          address=$(python3 -c 'import json; print(json.load(open("/tmp/jobsai-usdg-deployment.json"))["deployedTo"])')
+          echo "USDG_TOKEN_ADDRESS=$address" >> "$GITHUB_ENV"
+
+      - name: Run unit, PostgreSQL, and Anvil settlement tests
+        working-directory: backend
+        run: bun test --coverage --coverage-reporter=lcov --parallel=2
+
+      - name: Enforce settlement line coverage
+        working-directory: backend
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          records = Path("coverage/lcov.info").read_text().split("end_of_record")
+          record = next((r for r in records if "SF:src/settlement.ts" in r), None)
+          if record is None:
+              raise SystemExit("No settlement.ts coverage record was generated")
+          values = {line.split(":", 1)[0]: int(line.split(":", 1)[1]) for line in record.splitlines() if line.startswith(("LF:", "LH:"))}
+          total, hit = values.get("LF", 0), values.get("LH", 0)
+          percent = (100 * hit / total) if total else 0
+          print(f"settlement.ts line coverage: {hit}/{total} ({percent:.1f}%)")
+          if percent < 85:
+              raise SystemExit("settlement.ts line coverage is below 85%")
+          PY
 
   gitleaks:
     name: Scan repository history for secrets

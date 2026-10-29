@@ -65,7 +65,7 @@ bun run check
 bun test
 ```
 
-PostgreSQL route integration tests are opt-in with `JOBSAI_DB_INTEGRATION=1`. They require `DATABASE_URL` to point to a disposable database whose name includes `test`; they run migrations and create/delete their own fixture rows. Never use a production or shared database. GitHub Actions provisions an isolated PostgreSQL 16 database and enables the flag for CI.
+PostgreSQL route tests and Anvil settlement tests are opt-in with `JOBSAI_DB_INTEGRATION=1`; the chain suite also needs `JOBSAI_ANVIL_INTEGRATION=1`. They require `DATABASE_URL` to point to a disposable database whose name includes `test`; they run migrations and create/delete their own fixture rows. Never use a production or shared database. GitHub Actions provisions an isolated PostgreSQL 16 database and local Anvil chain for CI.
 
 To run the database route tests locally, start an isolated PostgreSQL database:
 
@@ -77,7 +77,18 @@ docker run --rm --detach --name jobsai-test-postgres \
   --publish 5432:5432 postgres:16
 ```
 
-Then, from `backend`, set the test database and opt-in flag when running Bun. Your `backend/.env` must also contain valid test values for the required backend configuration, including `AUTH_TOKEN_PEPPER`, `DATA_ENCRYPTION_KEY`, `GAS_WALLET_PRIVATE_KEY`, `CRON_SECRET`, `JOBSAI_TEAM_PASSWORD`, and `TEAM_WALLET_ADDRESSES`. For this route suite, use a local RPC URL (`http://127.0.0.1:8545`), Robinhood Chain testnet ID (`46630`), and a disposable test key; it does not send transactions or call the RPC.
+Then, from `backend`, set the test database and opt-in flag when running Bun. Your `backend/.env` must also contain valid test values for the required backend configuration, including `AUTH_TOKEN_PEPPER`, `DATA_ENCRYPTION_KEY`, `GAS_WALLET_PRIVATE_KEY`, `CRON_SECRET`, `JOBSAI_TEAM_PASSWORD`, and `TEAM_WALLET_ADDRESSES`. The PostgreSQL route suite uses a local RPC URL (`http://127.0.0.1:8545`) and does not call it. The Anvil suite sends test transactions only to a local chain: install Foundry, start Anvil with chain ID `46630`, and deploy the local mock token from `backend`:
+
+```sh
+anvil --chain-id 46630 --host 127.0.0.1 --port 8545 --accounts 10 --balance 10000
+# In another terminal, from backend:
+forge create contracts/MockUSDG.sol:MockUSDG \
+  --rpc-url http://127.0.0.1:8545 \
+  --private-key "$ANVIL_TEST_PRIVATE_KEY" \
+  --broadcast --json
+```
+
+Set `ANVIL_TEST_PRIVATE_KEY` to one of the test-only keys printed by your local Anvil process. Set `USDG_TOKEN_ADDRESS` to the printed `deployedTo` address and use the matching local-chain test settings (`RH_CHAIN_ID=46630`, `RH_CONFIRMATIONS=1`). Then enable both flags when running the test suite. The Anvil integration run also enforces at least 85% line coverage for `src/settlement.ts`.
 
 ```sh
 DATABASE_URL=postgresql://jobsai:jobsai@127.0.0.1:5432/jobsai_test \
@@ -87,6 +98,8 @@ RH_RPC_URL=http://127.0.0.1:8545 \
 GAS_WALLET_PRIVATE_KEY=0x1111111111111111111111111111111111111111111111111111111111111111 \
 bun test
 ```
+
+To include the Anvil settlement case after starting Anvil and deploying the local mock token, add `JOBSAI_ANVIL_INTEGRATION=1`, `RH_CONFIRMATIONS=1`, and your Anvil-only `ANVIL_TEST_PRIVATE_KEY` to that command.
 
 Stop the isolated database afterward with `docker stop jobsai-test-postgres`. Ordinary `bun test` skips the database route tests unless `JOBSAI_DB_INTEGRATION=1` is explicitly set.
 

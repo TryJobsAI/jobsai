@@ -15,4 +15,7 @@ validation/
 backend/.env
 backend/node_modules/
 backend/bun.lockb
+backend/out/
+backend/cache/
+backend/coverage/
 backend/README.md

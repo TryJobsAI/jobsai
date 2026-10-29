@@ -40,7 +40,7 @@ describe("job escrow and funding proof", () => {
     expect(code(() => validateJobFunding(terms, escrow, hash, { ...base, transaction: { ...base.transaction, input: "0x01" } }))).toBe("funding_amount_mismatch");
     expect(code(() => validateJobFunding(terms, escrow, hash, { ...base, transaction: { ...base.transaction, chainId: 1 } }))).toBe("wrong_chain");
     expect(code(() => validateJobFunding(terms, escrow, hash, { ...base, transaction: { ...base.transaction, from: escrow } }))).toBe("funding_wallet_mismatch");
-    expect(code(() => validateJobFunding(terms, escrow, hash, { ...base, latestBlock: 100n }))).toBe("funding_confirmations_pending");
+    expect(code(() => validateJobFunding(terms, escrow, hash, { ...base, latestBlock: 100n + BigInt(config.RH_CONFIRMATIONS - 2) }))).toBe("funding_confirmations_pending");
     expect(code(() => validateJobFunding(terms, escrow, hash, { ...base, receipt: { ...base.receipt, status: "reverted" } }))).toBe("funding_failed");
   });
 
