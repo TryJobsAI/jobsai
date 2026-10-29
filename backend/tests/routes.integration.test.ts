@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { expect, test } from "bun:test";
 
-const enabled = process.env.GITHUB_ACTIONS === "true" && process.env.JOBSAI_DB_INTEGRATION === "1";
+const enabled = process.env.JOBSAI_DB_INTEGRATION === "1";
 const dbRouteTest = enabled ? test : test.skip;
 
 dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund settlements", async () => {
@@ -16,6 +16,7 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
     import("../src/auth.js"),
   ]);
   await migrate();
+  await db.query("TRUNCATE request_rate_limits");
 
   const clientWallet = `0x${randomBytes(20).toString("hex")}`;
   const doerWallet = `0x${randomBytes(20).toString("hex")}`;
@@ -279,6 +280,7 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
       await db.query("DELETE FROM sessions WHERE user_id=ANY($1::uuid[])", [userIds]);
       await db.query("DELETE FROM users WHERE id=ANY($1::uuid[])", [userIds]);
     }
+    await db.query("TRUNCATE request_rate_limits");
     await db.end();
   }
 });

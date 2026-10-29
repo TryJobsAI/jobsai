@@ -1,24 +1,24 @@
 # JobsAI job and payment invariants
 
-These rules describe conditions the API, settlement worker, and tests must preserve.
+These rules describe conditions the API, settlement worker, and tests must preserve. Each rule links to the test that checks it. PostgreSQL route cases run in CI and can be run locally with the opt-in steps in the [backend README](../backend/README.md#testing).
 
 ## Job assignment
 
-- Only a funded `ready` job can be claimed, and its client cannot claim it.
-- An unsubmitted `in_progress` claim is released after `CLAIM_EXPIRY_HOURS` (24 by default). The client may release that worker earlier.
-- Releasing a claim clears the assigned worker and claim timestamp, returns the job to `ready`, and records an event. Jobs with a submission cannot be released this way.
-- One wallet can hold no more active claims than `MAX_ACTIVE_CLAIMS_PER_WALLET`.
+- Only a funded `ready` job can be claimed, and its client cannot claim it. Test: [`job lifecycle rules > funding actions belong to client and claiming requires a ready, unexpired job`](../backend/tests/lifecycle.test.ts).
+- An unsubmitted `in_progress` claim is released after `CLAIM_EXPIRY_HOURS` (24 by default). The client may release that worker earlier. Test: [`PostgreSQL job routes enforce claim limits and create client refund settlements`](../backend/tests/routes.integration.test.ts) (client release and expiry scenario).
+- Releasing a claim clears the assigned worker and claim timestamp, returns the job to `ready`, and records an event. Jobs with a submission cannot be released this way. Tests: [`job lifecycle rules > a doer may unclaim only before submitting work`](../backend/tests/lifecycle.test.ts) and the client release/expiry scenario in [`routes.integration.test.ts`](../backend/tests/routes.integration.test.ts).
+- One wallet can hold no more active claims than `MAX_ACTIVE_CLAIMS_PER_WALLET`. Tests: [`job lifecycle rules > wallet claim capacity blocks additional active jobs at the configured limit`](../backend/tests/lifecycle.test.ts) and the concurrent claim scenario in [`routes.integration.test.ts`](../backend/tests/routes.integration.test.ts).
 
 ## Settlement outcome and recipient
 
-- A `pay_doer` settlement pays the currently assigned worker. A `refund_client` settlement pays the client.
-- A worker may change the recipient only for a failed `pay_doer` settlement and only before a payout transaction is signed.
-- A team reviewer may resolve an eligible failed settlement to the worker or client. This decision updates both the outcome and recipient in one database transaction and records a review entry and event.
-- Once a payout transaction is signed, neither participant nor a reviewer can redirect it or create a second payout.
-- Before sponsoring gas, the service estimates required costs and keeps the configured gas-wallet reserve. A stuck gas-wallet transaction can be replaced at the same nonce; every signed attempt remains recorded so a late confirmation can be recognized.
+- A `pay_doer` settlement pays the currently assigned worker. A `refund_client` settlement pays the client. Test: [`PostgreSQL job routes enforce claim limits and create client refund settlements`](../backend/tests/routes.integration.test.ts) (dispute outcome and refund recipient scenarios).
+- A worker may change the recipient only for a failed `pay_doer` settlement and only before a payout transaction is signed. Test: [`PostgreSQL job routes enforce claim limits and create client refund settlements`](../backend/tests/routes.integration.test.ts) (refund-recipient redirect is rejected and recipient remains the client).
+- A team reviewer may resolve an eligible failed settlement to the worker or client. This decision updates both the outcome and recipient in one database transaction and records a review entry and event. Tests: [`job lifecycle rules > participant access, dispute lock, and both settlement decisions are guarded`](../backend/tests/lifecycle.test.ts) and the reviewer-resolution scenario in [`routes.integration.test.ts`](../backend/tests/routes.integration.test.ts).
+- Once a payout transaction is signed, neither participant nor a reviewer can redirect it or create a second payout. Test: [`PostgreSQL job routes enforce claim limits and create client refund settlements`](../backend/tests/routes.integration.test.ts) (failed settlement review and payout-recipient guard).
+- Before sponsoring gas, the service estimates required costs and keeps the configured gas-wallet reserve. A stuck gas-wallet transaction can be replaced at the same nonce; every signed attempt remains recorded so a late confirmation can be recognized. Pure transaction and reserve calculations are covered by [`settlement transaction construction`](../backend/tests/settlement.test.ts); end-to-end settlement behavior is covered by the Anvil suite described in the backend README when available.
 
 ## Review and history
 
-- Client acceptance starts the worker payment. A dispute pauses the job until team review chooses payment or refund.
-- Every submission and revision is retained in order. Settlement decisions and claim release or expiry are recorded in the job event history.
-- ETH and USDG amounts remain denominated in the asset selected for that job. JobsAI does not convert them or use a price oracle.
+- Client acceptance starts the worker payment. A dispute pauses the job until team review chooses payment or refund. Tests: [`job lifecycle rules > participant access, dispute lock, and both settlement decisions are guarded`](../backend/tests/lifecycle.test.ts) and the open/resolve scenarios in [`routes.integration.test.ts`](../backend/tests/routes.integration.test.ts).
+- Every submission and revision is retained in order. Settlement decisions and claim release or expiry are recorded in the job event history. Test: [`PostgreSQL job routes enforce claim limits and create client refund settlements`](../backend/tests/routes.integration.test.ts) (revision, dispute history, and release/expiry scenarios).
+- ETH and USDG amounts remain denominated in the asset selected for that job. JobsAI does not convert them or use a price oracle. Tests: [`job and submission input > parses ETH and USDG at their own precision`](../backend/tests/job-input.test.ts), [`job escrow and funding proof > accepts exact confirmed ETH only, from the client to the escrow`](../backend/tests/escrow.test.ts), and [`job escrow and funding proof > accepts exact USDG Transfer log and rejects mismatches`](../backend/tests/escrow.test.ts).
