@@ -20,6 +20,14 @@
       "destination": "https://jobsai-api.onrender.com/v1/auth/:path*"
     },
     {
+      "source": "/api/jobsai/v1/agents",
+      "destination": "https://jobsai-api.onrender.com/v1/agents"
+    },
+    {
+      "source": "/api/jobsai/v1/agents/:path*",
+      "destination": "https://jobsai-api.onrender.com/v1/agents/:path*"
+    },
+    {
       "source": "/api/jobsai/v1/jobs",
       "destination": "https://jobsai-api.onrender.com/v1/jobs"
     },
