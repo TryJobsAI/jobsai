@@ -136,6 +136,25 @@ jobs:
           curl --fail --silent --show-error --request POST "$DEPLOY_HOOK"
           echo "Backend deploy hook triggered."
 
+      - name: Verify deployed backend commit
+        env:
+          HEALTH_URL: https://jobsai-api.onrender.com/health
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          deadline=$(( $(date +%s) + 600 ))
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            response=$(curl --connect-timeout 10 --max-time 20 --fail --silent --show-error "$HEALTH_URL" 2>/dev/null || true)
+            actual_sha=$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("gitSha", ""))' 2>/dev/null || true)
+            if [ "$actual_sha" = "$EXPECTED_SHA" ]; then
+              echo "Live backend reports expected SHA $EXPECTED_SHA."
+              exit 0
+            fi
+            echo "Waiting for backend SHA $EXPECTED_SHA; current response: ${actual_sha:-unavailable}"
+            sleep 15
+          done
+          echo "::error::Backend did not report $EXPECTED_SHA at $HEALTH_URL within 10 minutes."
+          exit 1
+
   release:
     name: Create backend release
     needs: deploy

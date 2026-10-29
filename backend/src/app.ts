@@ -16,7 +16,7 @@ app.set("trust proxy", config.TRUST_PROXY);
 app.use(express.json({ limit: "256kb" }));
 app.use("/v1", rateLimit([{ scope: "api", limit: 240, windowSeconds: 60, identity: requestIdentity.clientIp }]));
 
-app.get("/health", (_request, response) => response.json({ status: "ok" }));
+app.get("/health", (_request, response) => response.json({ status: "ok", gitSha: process.env.GIT_SHA ?? "unknown" }));
 app.get("/health/ready", asyncRoute(async (_request, response) => {
   await db.query("SELECT 1");
   response.json({ status: "ready" });
