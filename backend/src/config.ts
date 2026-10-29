@@ -20,6 +20,8 @@ const env = z
     RH_CONFIRMATIONS: z.coerce.number().int().min(1).max(100).default(2),
     MAX_ACTIVE_CLAIMS_PER_WALLET: z.coerce.number().int().min(1).max(100).default(2),
     CLAIM_EXPIRY_HOURS: z.coerce.number().int().min(1).max(168).default(24),
+    PAUSE_NEW_WORK: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+    OPS_ALERT_WEBHOOK_URL: optionalString.pipe(z.string().url().optional()),
     MIN_JOB_ETH_AMOUNT: z.string().regex(/^(?:0|[1-9]\d{0,11})(?:\.\d{1,18})?$/).default("0.001"),
     MIN_JOB_USDG_AMOUNT: z.string().regex(/^(?:0|[1-9]\d{0,11})(?:\.\d{1,18})?$/).default("1"),
     AUTH_DOMAIN: z.string().min(1).default("www.tryjobsai.com"),

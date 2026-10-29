@@ -11,7 +11,7 @@ import { makeEscrowWallet, verifyJobFunding, type FundingTerms, type JobAsset } 
 import { ApiError, asyncRoute } from "./http.js";
 import { processSettlement } from "./settlement.js";
 import { assertMinimumJobAmount, createJobInputSchema, parseDeadline, parseJobAmount, submissionInputSchema } from "./job-input.js";
-import { assertActiveClaimCapacity, assertCanCancelFundedJob, assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertCanUnclaim, assertClaimable, assertDisputed, assertJobClient, assertParticipants, assertSettlementAllowed } from "./lifecycle.js";
+import { assertActiveClaimCapacity, assertCanCancelFundedJob, assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertCanUnclaim, assertClaimable, assertDisputed, assertJobClient, assertNewWorkAvailable, assertParticipants, assertSettlementAllowed } from "./lifecycle.js";
 import { rateLimit, requestIdentity } from "./rate-limit.js";
 
 export const jobsRouter = Router();
@@ -132,6 +132,7 @@ jobsRouter.post(
   "/",
   requireAuth,
   asyncRoute(async (request, response) => {
+    assertNewWorkAvailable(config.PAUSE_NEW_WORK);
     const input = createJobInputSchema.parse(request.body);
     if (input.asset === "usdg" && !config.USDG_TOKEN_ADDRESS)
       throw new ApiError(503, "usdg_unconfigured", "USDG jobs are not enabled until USDG_TOKEN_ADDRESS is configured.");
@@ -234,6 +235,7 @@ jobsRouter.post(
   "/:id/fund",
   requireAuth,
   asyncRoute(async (request, response) => {
+    assertNewWorkAvailable(config.PAUSE_NEW_WORK);
     const id = uuid.parse(request.params.id);
     const txHash = z.string().regex(/^0x[0-9a-fA-F]{64}$/).parse(request.body?.transactionHash);
     const job = await db.query<FundingTerms & { status: string }>(
@@ -297,6 +299,7 @@ jobsRouter.post(
   "/:id/claim",
   requireAuth,
   asyncRoute(async (request, response) => {
+    assertNewWorkAvailable(config.PAUSE_NEW_WORK);
     await releaseExpiredClaims();
     const id = uuid.parse(request.params.id);
     const client = await db.connect();

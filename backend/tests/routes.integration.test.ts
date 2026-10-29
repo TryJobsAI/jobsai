@@ -9,11 +9,12 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
   if (!databaseUrl.pathname.toLowerCase().includes("test"))
     throw new Error("Integration tests require a database name containing 'test'.");
 
-  const [{ app }, { db }, { migrate }, { hashSessionToken }] = await Promise.all([
+  const [{ app }, { db }, { migrate }, { hashSessionToken }, { config }] = await Promise.all([
     import("../src/app.js"),
     import("../src/db/index.js"),
     import("../src/db/migrate.js"),
     import("../src/auth.js"),
+    import("../src/config.js"),
   ]);
   await migrate();
   await db.query("TRUNCATE request_rate_limits");
@@ -99,7 +100,7 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
       return id;
     }
 
-    const [first, second, third, fourth, cancellation, disputed, payoutFailure, releaseJob] = await Promise.all([
+    const [first, second, third, fourth, cancellation, disputed, payoutFailure, releaseJob, acceptanceJob] = await Promise.all([
       createFundedReadyJob("Claim cap one"),
       createFundedReadyJob("Claim cap two"),
       createFundedReadyJob("Concurrent claim three"),
@@ -108,7 +109,20 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
       createFundedReadyJob("Dispute route lifecycle"),
       createFundedReadyJob("Recover failed payout"),
       createFundedReadyJob("Client release and claim expiry"),
+      createFundedReadyJob("Client acceptance remains available during pause"),
     ]);
+
+    config.PAUSE_NEW_WORK = true;
+    const pausedCreation = await request("/v1/jobs", clientToken, {
+      title: "Paused creation", description: "Should be rejected.", acceptanceCriteria: ["Never created."], asset: "eth", amount: "0.01",
+    });
+    const pausedFunding = await request(`/v1/jobs/${cancellation}/fund`, clientToken, { transactionHash: `0x${"aa".repeat(32)}` });
+    const pausedClaim = await request(`/v1/jobs/${releaseJob}/claim`, recoveryDoerToken, {});
+    expect(pausedCreation.status).toBe(503);
+    expect(pausedCreation.body.error.code).toBe("new_work_paused");
+    expect(pausedFunding.status).toBe(503);
+    expect(pausedClaim.status).toBe(503);
+    config.PAUSE_NEW_WORK = false;
 
     expect((await request(`/v1/jobs/${first}/claim`, doerToken, {})).status).toBe(200);
 
@@ -127,7 +141,9 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
     expect(doerCancel.status).toBe(403);
     expect(doerCancel.body.error.code).toBe("client_only");
 
+    config.PAUSE_NEW_WORK = true;
     const cancelled = await request(`/v1/jobs/${cancellation}/cancel`, clientToken, {});
+    config.PAUSE_NEW_WORK = false;
     expect(cancelled.status).toBe(202);
     expect(cancelled.body.data).toMatchObject({ jobId: cancellation, status: "settlement_pending", outcome: "refund_client" });
 
@@ -145,6 +161,7 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
     expect(claimedCancel.body.error.code).toBe("job_not_cancellable");
 
     expect((await request(`/v1/jobs/${disputed}/claim`, disputeDoerToken, {})).status).toBe(200);
+    expect((await request(`/v1/jobs/${acceptanceJob}/claim`, disputeDoerToken, {})).status).toBe(200);
     expect((await request(`/v1/jobs/${payoutFailure}/claim`, recoveryDoerToken, {})).status).toBe(200);
     expect((await request(`/v1/jobs/${releaseJob}/claim`, recoveryDoerToken, {})).status).toBe(200);
     const clientRelease = await request(`/v1/jobs/${releaseJob}/release-worker`, clientToken, {});
@@ -180,8 +197,18 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
     });
     expect(revisedSubmission.status).toBe(201);
     expect(revisedSubmission.body.data.revision).toBe(2);
+    const acceptanceSubmission = await request(`/v1/jobs/${acceptanceJob}/submissions`, disputeDoerToken, {
+      summary: "Delivered the accepted job while intake is paused.",
+      deliverable: "https://example.com/accepted-deliverable",
+      evidence: ["https://example.com/accepted-evidence.png"],
+    });
+    expect(acceptanceSubmission.status).toBe(201);
+    config.PAUSE_NEW_WORK = true;
+    const acceptedWhilePaused = await request(`/v1/jobs/${acceptanceJob}/accept`, clientToken, {});
+    expect(acceptedWhilePaused.status).toBe(202);
     const opened = await request(`/v1/jobs/${disputed}/disputes`, clientToken, { reason: "The delivery does not meet the agreed criteria." });
     expect(opened.status).toBe(201);
+    config.PAUSE_NEW_WORK = false;
     expect(opened.body.data).toMatchObject({ jobId: disputed, status: "disputed" });
 
     const wrongPassword = await request("/v1/team/auth/login", teamToken, { password: "incorrect-team-password" });
@@ -231,6 +258,7 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
     const workerJobs = await get("/v1/jobs/mine", recoveryDoerToken);
     expect(workerJobs.body.data.find((job: { id: string }) => job.id === payoutFailure).payoutRecoveryAvailable).toBe(false);
 
+    config.PAUSE_NEW_WORK = true;
     const resolved = await request(`/v1/team/disputes/${disputed}/resolve`, teamToken, {
       outcome: "pay_doer",
       note: "The submitted evidence satisfies the agreed acceptance criteria.",
@@ -243,6 +271,7 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
     ]);
     expect(disputeRow.rows[0]).toMatchObject({ resolution: "pay_doer", resolved_by: idsByWallet.get(teamWallet) });
     expect(doerSettlement.rows[0]).toMatchObject({ outcome: "pay_doer", recipient: disputeDoerWallet });
+    config.PAUSE_NEW_WORK = false;
 
     const logout = await request("/v1/team/auth/logout", teamToken, {});
     expect(logout.status).toBe(204);

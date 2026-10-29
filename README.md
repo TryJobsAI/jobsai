@@ -110,6 +110,8 @@ See [`backend/src/jobs.ts`](backend/src/jobs.ts) for route behavior and [`backen
 
 Workers can hold at most `MAX_ACTIVE_CLAIMS_PER_WALLET` active jobs at once. The default is two. Claims are serialized per wallet so concurrent requests cannot bypass this limit. A claim with no submission expires after 24 hours by default; clients can release a worker sooner.
 
+Operators can set `PAUSE_NEW_WORK=true` to pause job creation, funding registration, and claims while existing refunds, acceptances, disputes, reviews, and settlements continue. Configure `OPS_ALERT_WEBHOOK_URL` to receive alerts for low gas-wallet reserves, a settlement's fourth attempt, and gas transaction replacements. The service logs these events even when no webhook URL is configured. Pausing the API cannot prevent a user from sending a wallet transaction directly to an escrow address.
+
 ### How payments are handled
 
 The MVP creates a dedicated escrow wallet for each job. Its encrypted signing key is managed by the backend service, and a JobsAI-funded gas wallet sponsors settlement transactions. This setup depends on protecting the service and its keys. Use testnet during development and complete production key management and operational review before handling production funds.

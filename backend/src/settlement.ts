@@ -2,6 +2,7 @@ import { encodeFunctionData, erc20Abi, keccak256, parseTransaction, type Address
 import { db } from "./db/index.js";
 import { config } from "./config.js";
 import { gasAccount, gasWalletAddress, loadEscrowAccount, publicClient } from "./escrow.js";
+import { sendOpsAlert } from "./ops-alerts.js";
 
 type Settlement = {
   id: string; job_id: string; outcome: "pay_doer" | "refund_client"; recipient: Address;
@@ -144,8 +145,10 @@ async function replaceStuckGasTransaction(settlement: Settlement, current: { raw
     gasPrice,
     parsed.gas,
   );
-  if (await publicClient.getBalance({ address: gasWalletAddress }) < required)
+  if (await publicClient.getBalance({ address: gasWalletAddress }) < required) {
+    await sendOpsAlert("gas_wallet_below_reserve", { jobId: settlement.job_id });
     throw new Error("Gas wallet reserve is below the configured minimum. Gas transaction replacement paused.");
+  }
 
   const raw = await gasAccount.signTransaction({
     to: parsed.to,
@@ -179,6 +182,12 @@ async function replaceStuckGasTransaction(settlement: Settlement, current: { raw
       [settlement.job_id, hash, raw, Number(parsed.nonce)],
     );
     await client.query("COMMIT");
+    await sendOpsAlert("gas_transaction_replaced", {
+      jobId: settlement.job_id,
+      nonce: Number(parsed.nonce),
+      previousHash: current.hash,
+      replacementHash: hash,
+    });
     return { transaction: { raw: raw as Hex, hash }, confirmed: false };
   } catch (error) { await client.query("ROLLBACK"); throw error; }
   finally { client.release(); }
@@ -203,8 +212,10 @@ async function sendGasTransaction(jobId: string, transaction: { raw: Hex; hash: 
 export async function processSettlement(jobId: string) {
   const lease = await db.query(
     `UPDATE job_settlements SET lease_until=now()+interval '2 minutes',attempts=attempts+1,updated_at=now()
-     WHERE job_id=$1 AND status='pending' AND (lease_until IS NULL OR lease_until<now()) RETURNING id`, [jobId]);
+     WHERE job_id=$1 AND status='pending' AND (lease_until IS NULL OR lease_until<now()) RETURNING id,attempts`, [jobId]);
   if (!lease.rowCount) return;
+  if (Number(lease.rows[0].attempts) === 4)
+    void sendOpsAlert("settlement_attempts_exceeded", { jobId, attempts: Number(lease.rows[0].attempts) });
   try {
     let settlement = await load(jobId);
     if (!settlement) throw new Error("Settlement record is missing.");
@@ -233,7 +244,10 @@ export async function processSettlement(jobId: string) {
         if (!settlement.gas_signed_tx) {
           const balance = await publicClient.getBalance({ address: gasWalletAddress });
           const required = gasWalletRequiredBalance(BigInt(config.GAS_WALLET_MIN_BALANCE_WEI), reserve, gasPrice, gasTopUpLimit!);
-          if (balance < required) throw new Error("Gas wallet reserve is below the configured minimum. Settlement paused before sponsorship.");
+          if (balance < required) {
+            await sendOpsAlert("gas_wallet_below_reserve", { jobId });
+            throw new Error("Gas wallet reserve is below the configured minimum. Settlement paused before sponsorship.");
+          }
         }
         const gasTx = await ensureStageTx(settlement, "gas", {
           to: settlement.escrow_address, value: reserve, gas: gasTopUpLimit ?? 1n, gasPrice,

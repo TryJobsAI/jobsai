@@ -12,6 +12,11 @@ type SettlementJob = {
   status: string;
 };
 
+export function assertNewWorkAvailable(paused: boolean) {
+  if (paused)
+    throw new ApiError(503, "new_work_paused", "Creating jobs, funding them, and claiming work are temporarily paused.");
+}
+
 export function assertActiveClaimCapacity(activeClaims: number, maxActiveClaims: number) {
   if (!Number.isInteger(activeClaims) || activeClaims < 0 || !Number.isInteger(maxActiveClaims) || maxActiveClaims < 1)
     throw new Error("Claim capacity values must be non-negative integers with a positive limit.");

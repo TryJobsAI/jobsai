@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   assertActiveClaimCapacity, assertCanCancelFundedJob, assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertCanUnclaim, assertClaimable,
-  assertDisputed, assertJobClient, assertParticipants, assertSettlementAllowed,
+  assertDisputed, assertJobClient, assertNewWorkAvailable, assertParticipants, assertSettlementAllowed,
 } from "../src/lifecycle.js";
 
 function expectCode(run: () => unknown, status: number, code: string) {
@@ -18,6 +18,16 @@ describe("job lifecycle rules", () => {
       expectCode(() => assertCanCancelFundedJob({ ...ready, status }, "client"), 409, "job_not_cancellable");
     expect(() => assertSettlementAllowed(ready, "client", "client_cancellation", "refund_client")).not.toThrow();
     expectCode(() => assertSettlementAllowed(ready, "client", "client_cancellation", "pay_doer"), 409, "invalid_cancellation_outcome");
+  });
+
+  test("the pause blocks new work without blocking refunds, acceptance, disputes, or settlement decisions", () => {
+    expect(() => assertNewWorkAvailable(false)).not.toThrow();
+    expectCode(() => assertNewWorkAvailable(true), 503, "new_work_paused");
+    const ready = { client_id: "client", status: "ready", doer_id: null, doer_wallet: null };
+    expect(() => assertCanCancelFundedJob(ready, "client")).not.toThrow();
+    expect(() => assertCanDispute({ client_id: "client", doer_id: "doer", status: "submitted" }, "client")).not.toThrow();
+    expect(() => assertSettlementAllowed({ client_id: "client", doer_id: "doer", doer_wallet: "0xdoer", status: "submitted" }, "client", "client_acceptance", "pay_doer")).not.toThrow();
+    expect(() => assertSettlementAllowed({ client_id: "client", doer_id: "doer", doer_wallet: "0xdoer", status: "disputed" }, "team", "team_dispute_resolution", "refund_client")).not.toThrow();
   });
 
   test("wallet claim capacity blocks additional active jobs at the configured limit", () => {

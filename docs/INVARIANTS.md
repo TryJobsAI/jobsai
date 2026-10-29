@@ -2,6 +2,8 @@
 
 These rules describe conditions the API, settlement worker, and tests must preserve. Each rule links to the test that checks it. PostgreSQL route cases run in CI and can be run locally with the opt-in steps in the [backend README](../backend/README.md#testing).
 
+The intake pause is covered by [`job lifecycle rules > the pause blocks new work without blocking refunds, acceptance, disputes, or settlement decisions`](../backend/tests/lifecycle.test.ts) and by pause-on route cases in [`routes.integration.test.ts`](../backend/tests/routes.integration.test.ts). Operational-alert formatting and webhook-failure handling are covered by [`operational alerts`](../backend/tests/ops-alerts.test.ts).
+
 ## Job assignment
 
 - Only a funded `ready` job can be claimed, and its client cannot claim it. Test: [`job lifecycle rules > funding actions belong to client and claiming requires a ready, unexpired job`](../backend/tests/lifecycle.test.ts).
