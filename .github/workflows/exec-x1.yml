@@ -1,0 +1,98 @@
+name: JobsAI Exec X1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "jobsai-exec-x1/**"
+      - ".github/workflows/exec-x1.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "jobsai-exec-x1/**"
+      - ".github/workflows/exec-x1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jobsai-exec-x1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate Exec X1
+    if: github.repository == 'TryJobsAI/jobsai'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@3d267786b128fe76c2f16a390aa2448b815359f3
+        with:
+          bun-version: 1.4.2
+      - name: Install runtime dependencies
+        working-directory: jobsai-exec-x1
+        run: bun install --frozen-lockfile --ignore-scripts
+      - name: Type-check runtime
+        working-directory: jobsai-exec-x1
+        run: bun run typecheck
+      - name: Test runtime
+        working-directory: jobsai-exec-x1
+        run: bun run test
+      - name: Build runtime
+        working-directory: jobsai-exec-x1
+        run: bun run build
+
+  publish:
+    name: Build and publish Exec X1 image
+    needs: validate
+    if: github.repository == 'TryJobsAI/jobsai' && (github.event_name == 'pull_request' || (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435
+      - name: Set image name
+        run: echo "IMAGE_NAME=ghcr.io/tryjobsai/jobsai-exec-x1" >> "$GITHUB_ENV"
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate image tags
+        id: metadata
+        uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long
+      - name: Build and publish image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        with:
+          context: ./jobsai-exec-x1
+          file: ./jobsai-exec-x1/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          build-args: GIT_SHA=${{ github.sha }}
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+
+  deploy:
+    name: Trigger Exec X1 deployment
+    needs: publish
+    if: github.repository == 'TryJobsAI/jobsai' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && vars.EXEC_X1_DEPLOY_HOOK_URL != ''
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Trigger separate runtime deployment
+        env:
+          DEPLOY_HOOK: ${{ vars.EXEC_X1_DEPLOY_HOOK_URL }}
+        run: curl --fail --silent --show-error --request POST "$DEPLOY_HOOK"

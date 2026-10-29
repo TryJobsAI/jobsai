@@ -10,6 +10,7 @@ import { reconcileSettlements } from "./settlement.js";
 import { IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES, uploadSubmissionImage } from "./media.js";
 import { assertCanSubmit } from "./lifecycle.js";
 import { rateLimit, requestIdentity } from "./rate-limit.js";
+import { agentRuntimeRouter, agentsRouter } from "./agents.js";
 
 const app = express();
 app.set("trust proxy", config.TRUST_PROXY);
@@ -69,6 +70,8 @@ app.post(
   }),
 );
 app.use("/v1/jobs", jobsRouter);
+app.use("/v1/agents", agentsRouter);
+app.use("/v1/agent-runtime", agentRuntimeRouter);
 app.use("/v1/team", teamJobsRouter);
 app.use("/v1/cron", cronRouter);
 app.use((_request, _response, next) => next(new ApiError(404, "not_found", "This endpoint does not exist.")));

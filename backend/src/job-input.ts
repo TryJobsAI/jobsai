@@ -3,11 +3,13 @@ import { z } from "zod";
 import { ApiError } from "./http.js";
 
 export const amountSchema = z.string().regex(/^(?:0|[1-9]\d{0,11})(?:\.\d{1,18})?$/, "Enter a plain decimal amount.");
+export const jobCategories = ["writing", "image_generation", "research", "design", "coding", "data", "other"] as const;
 
 export const createJobInputSchema = z.object({
   title: z.string().trim().min(3).max(160),
   description: z.string().trim().min(1).max(20_000),
   acceptanceCriteria: z.array(z.string().trim().min(1).max(500)).min(1).max(20),
+  category: z.enum(jobCategories).default("other"),
   asset: z.enum(["eth", "usdg"]),
   amount: amountSchema,
 });

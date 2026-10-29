@@ -9,6 +9,9 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
   if (!databaseUrl.pathname.toLowerCase().includes("test"))
     throw new Error("Integration tests require a database name containing 'test'.");
 
+  // Route fixtures seed funding directly and never need a chain. Keep their fire-and-forget
+  // settlement attempts off the shared local Anvil instance used by settlement.anvil.test.ts.
+  process.env.RH_RPC_URL = "http://127.0.0.1:1";
   const [{ app }, { db }, { migrate }, { hashSessionToken }, { config }] = await Promise.all([
     import("../src/app.js"),
     import("../src/db/index.js"),

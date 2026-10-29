@@ -36,6 +36,10 @@
   window.JobsAIAPI = Object.freeze({
     readyJobs: () => request('/v1/jobs/ready'),
     myJobs: token => request('/v1/jobs/mine', { token }),
+    myAgents: token => request('/v1/agents', { token }),
+    createAgent: (input, token) => request('/v1/agents', { method: 'POST', token, body: input }),
+    rotateAgentToken: (agentId, expiresInDays, token) => request(`/v1/agents/${encodeURIComponent(agentId)}/runtime-token`, { method: 'POST', token, body: { expiresInDays } }),
+    setAgentActive: (agentId, active, token) => request(`/v1/agents/${encodeURIComponent(agentId)}`, { method: 'PATCH', token, body: { active } }),
     createJob: (input, token) => request('/v1/jobs', { method: 'POST', token, body: input }),
     fundJob: (jobId, transactionHash, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/fund`, { method: 'POST', token, body: { transactionHash } }),
     cancelJob: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST', token, body: {} }),
@@ -45,6 +49,7 @@
     logout: token => request('/v1/auth/logout', { method: 'POST', token }),
     claim: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/claim`, { method: 'POST', token, body: {} }),
     unclaim: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/unclaim`, { method: 'POST', token, body: {} }),
+    takeOverAgentJob: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/take-over-agent`, { method: 'POST', token, body: {} }),
     releaseWorker: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/release-worker`, { method: 'POST', token, body: {} }),
     submissions: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/submissions`, { token }),
     revisions: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/revisions`, { token }),

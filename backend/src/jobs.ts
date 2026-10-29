@@ -22,8 +22,11 @@ type JobRow = {
   client_wallet: string;
   doer_id: string | null;
   doer_wallet: string | null;
+  doer_agent_id: string | null;
+  doer_agent_name: string | null;
   title: string;
   description: string;
+  category: string;
   acceptance_criteria: string[];
   asset: JobAsset;
   amount_raw: string;
@@ -49,11 +52,13 @@ type JobRow = {
 };
 
 const jobSelect = `SELECT j.*, c.wallet_address AS client_wallet, d.wallet_address AS doer_wallet,
+    a.name AS doer_agent_name,
     ew.address AS escrow_address, s.status AS settlement_status, s.outcome AS settlement_outcome, s.error AS settlement_error,
     s.recipient AS settlement_recipient, s.payout_signed_tx AS settlement_payout_signed_tx,
     s.lease_until AS settlement_lease_until
   FROM jobs j JOIN users c ON c.id=j.client_id
   LEFT JOIN users d ON d.id=j.doer_id
+  LEFT JOIN ai_agents a ON a.id=j.doer_agent_id
   JOIN job_escrow_wallets ew ON ew.job_id=j.id
   LEFT JOIN job_settlements s ON s.job_id=j.id`;
 
@@ -62,6 +67,9 @@ function presentJob(job: JobRow) {
     id: job.id,
     clientWallet: job.client_wallet,
     doerWallet: job.doer_wallet,
+    category: job.category,
+    workerType: job.doer_agent_id ? "ai" : job.doer_id ? "human" : null,
+    doerAgent: job.doer_agent_id ? { id: job.doer_agent_id, name: job.doer_agent_name } : null,
     title: job.title,
     description: job.description,
     acceptanceCriteria: job.acceptance_criteria,
@@ -113,7 +121,7 @@ export async function releaseExpiredClaims() {
          LIMIT 100
          FOR UPDATE SKIP LOCKED
        ), released AS (
-         UPDATE jobs j SET doer_id=NULL,status='ready',claimed_at=NULL,updated_at=now()
+         UPDATE jobs j SET doer_id=NULL,doer_agent_id=NULL,status='ready',claimed_at=NULL,updated_at=now()
          FROM expired e WHERE j.id=e.id
          RETURNING j.id
        )
@@ -153,8 +161,8 @@ jobsRouter.post(
       );
       if (Number(recent.rows[0].count) >= 10) throw new ApiError(429, "job_creation_rate_limited", "You have reached the job creation limit. Try again later.");
       await client.query(
-        `INSERT INTO jobs (id,client_id,title,description,acceptance_criteria,asset,amount_raw,token_address,deadline_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        `INSERT INTO jobs (id,client_id,title,description,acceptance_criteria,asset,amount_raw,token_address,deadline_at,category)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
         [
           id,
           request.auth!.userId,
@@ -165,6 +173,7 @@ jobsRouter.post(
           amount.toString(),
           input.asset === "usdg" ? config.USDG_TOKEN_ADDRESS!.toLowerCase() : null,
           deadlineAt,
+          input.category,
         ],
       );
       await client.query(
@@ -318,7 +327,7 @@ jobsRouter.post(
         [request.auth!.userId],
       );
       assertActiveClaimCapacity(Number(active.rows[0].count), config.MAX_ACTIVE_CLAIMS_PER_WALLET);
-      await client.query("UPDATE jobs SET doer_id=$2,status='in_progress',claimed_at=now(),updated_at=now() WHERE id=$1", [
+      await client.query("UPDATE jobs SET doer_id=$2,doer_agent_id=NULL,status='in_progress',claimed_at=now(),updated_at=now() WHERE id=$1", [
         id,
         request.auth!.userId,
       ]);
@@ -407,7 +416,7 @@ jobsRouter.post(
       const job = selected.rows[0];
       if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
       assertCanUnclaim(job, request.auth!.userId);
-      await client.query("UPDATE jobs SET doer_id=NULL,status='ready',claimed_at=NULL,updated_at=now() WHERE id=$1", [id]);
+      await client.query("UPDATE jobs SET doer_id=NULL,doer_agent_id=NULL,status='ready',claimed_at=NULL,updated_at=now() WHERE id=$1", [id]);
       await appendEvent(client, id, request.auth!.userId, "job.unclaimed");
       await client.query("COMMIT");
       response.json({ data: { jobId: id, status: "ready" } });
@@ -417,6 +426,32 @@ jobsRouter.post(
     } finally {
       client.release();
     }
+  }),
+);
+
+jobsRouter.post(
+  "/:id/take-over-agent",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    const id = uuid.parse(request.params.id);
+    const client = await db.connect();
+    try {
+      await client.query("BEGIN");
+      const selected = await client.query<{ doer_id: string | null; doer_agent_id: string | null; status: string }>(
+        "SELECT doer_id,doer_agent_id,status FROM jobs WHERE id=$1 FOR UPDATE", [id],
+      );
+      const job = selected.rows[0];
+      if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
+      if (job.doer_id !== request.auth!.userId) throw new ApiError(403, "doer_only", "Only the wallet operating this agent can take over its job.");
+      if (!job.doer_agent_id || !["in_progress", "revision_requested"].includes(job.status))
+        throw new ApiError(409, "agent_takeover_unavailable", "Only an active AI assignment can be taken over.");
+      const previousAgentId = job.doer_agent_id;
+      await client.query("UPDATE jobs SET doer_agent_id=NULL,updated_at=now() WHERE id=$1", [id]);
+      await appendEvent(client, id, request.auth!.userId, "job.agent_taken_over_by_owner", { agentId: previousAgentId });
+      await client.query("COMMIT");
+      response.json({ data: { jobId: id, status: job.status, workerType: "human" } });
+    } catch (error) { await client.query("ROLLBACK"); throw error; }
+    finally { client.release(); }
   }),
 );
 
@@ -437,7 +472,7 @@ jobsRouter.post(
       if (job.client_id !== request.auth!.userId) throw new ApiError(403, "client_only", "Only the client can release the assigned worker.");
       if (job.status !== "in_progress" || !job.doer_id || job.has_submissions)
         throw new ApiError(409, "worker_not_releasable", "A worker can be released only before any work has been submitted.");
-      await client.query("UPDATE jobs SET doer_id=NULL,status='ready',claimed_at=NULL,updated_at=now() WHERE id=$1", [id]);
+      await client.query("UPDATE jobs SET doer_id=NULL,doer_agent_id=NULL,status='ready',claimed_at=NULL,updated_at=now() WHERE id=$1", [id]);
       await appendEvent(client, id, request.auth!.userId, "job.worker_released_by_client");
       await client.query("COMMIT");
       response.json({ data: { jobId: id, status: "ready" } });
@@ -457,12 +492,13 @@ jobsRouter.post(
     const client = await db.connect();
     try {
       await client.query("BEGIN");
-      const selected = await client.query<{ status: string; doer_id: string | null }>(
-        "SELECT status,doer_id FROM jobs WHERE id=$1 FOR UPDATE",
+      const selected = await client.query<{ status: string; doer_id: string | null; doer_agent_id: string | null }>(
+        "SELECT status,doer_id,doer_agent_id FROM jobs WHERE id=$1 FOR UPDATE",
         [id],
       );
       const job = selected.rows[0];
       if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
+      if (job.doer_agent_id) throw new ApiError(403, "agent_submission_required", "This job is assigned to an AI agent and must be submitted by its runtime.");
       assertCanSubmit(job, request.auth!.userId);
       const previous = await client.query<{ revision: number }>(
         "SELECT COALESCE(MAX(revision),0)::int AS revision FROM job_submissions WHERE job_id=$1",
@@ -508,10 +544,15 @@ jobsRouter.get(
       payload_ciphertext: string;
       payload_digest: string;
       created_at: Date;
-    }>("SELECT id,revision,payload_ciphertext,payload_digest,created_at FROM job_submissions WHERE job_id=$1 ORDER BY revision", [id]);
+      submitted_by_agent_id: string | null;
+      submitted_by_agent_name: string | null;
+    }>(`SELECT s.id,s.revision,s.payload_ciphertext,s.payload_digest,s.created_at,s.submitted_by_agent_id,a.name AS submitted_by_agent_name
+        FROM job_submissions s LEFT JOIN ai_agents a ON a.id=s.submitted_by_agent_id
+        WHERE s.job_id=$1 ORDER BY s.revision`, [id]);
     response.json({
-      data: rows.rows.map(({ payload_ciphertext, ...row }) => ({
+      data: rows.rows.map(({ payload_ciphertext, submitted_by_agent_id, submitted_by_agent_name, ...row }) => ({
         ...row,
+        submittedByAgent: submitted_by_agent_id ? { id: submitted_by_agent_id, name: submitted_by_agent_name } : null,
         ...JSON.parse(decryptPayload(payload_ciphertext, `submission:${id}:${row.revision}`)),
       })),
     });

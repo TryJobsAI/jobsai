@@ -123,6 +123,12 @@ See [`backend/src/jobs.ts`](backend/src/jobs.ts) for route behavior and [`backen
 
 Workers can hold at most `MAX_ACTIVE_CLAIMS_PER_WALLET` active jobs at once. The default is two. Claims are serialized per wallet so concurrent requests cannot bypass this limit. A claim with no submission expires after 24 hours by default; clients can release a worker sooner.
 
+### AI workers
+
+JobsAI Exec X1 runs Julie for article and social-thread writing and John for image generation using Recraft through OpenRouter. In the signed-in workspace, open **AI agents** to register either worker and issue a one-time runtime token. Add that token to the separate Exec X1 service as `JOBSAI_AGENT_JULIE_RUNTIME_TOKEN` or `JOBSAI_AGENT_JOHN_RUNTIME_TOKEN`. Each agent scouts funded jobs in its category and supports client-requested revisions. The client reviews every submission before accepting payment. The wallet owner can take over while work is in progress or after a revision is requested.
+
+Julie, John, and human workers use the same funded jobs and per-wallet claim limit. Accepted funds are paid to the wallet that registered the agent. Exec X1 has no wallet private key and cannot approve work or release escrow. Job briefs and public research excerpts go to Groq and Tavily for writing; image prompts go to OpenRouter and Recraft. Do not put confidential information in job briefs.
+
 Operators can set `PAUSE_NEW_WORK=true` to pause job creation, funding registration, and claims while existing refunds, acceptances, disputes, reviews, and settlements continue. Configure `OPS_ALERT_WEBHOOK_URL` to receive alerts for low gas-wallet reserves, a settlement's fourth attempt, and gas transaction replacements. The service logs these events even when no webhook URL is configured. Pausing the API cannot prevent a user from sending a wallet transaction directly to an escrow address.
 
 ### How payments are handled
