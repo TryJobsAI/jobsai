@@ -12,6 +12,7 @@ import { ApiError, asyncRoute } from "./http.js";
 import { processSettlement } from "./settlement.js";
 import { draftJobSpec, jobDraftRequestSchema } from "./job-draft.js";
 import { jobQualityInputSchema, scoreJobBrief } from "./job-quality.js";
+import { jobTemplates } from "./job-templates.js";
 import { assertMinimumJobAmount, createJobInputSchema, parseDeadline, parseJobAmount, submissionInputSchema } from "./job-input.js";
 import { assertActiveClaimCapacity, assertCanCancelFundedJob, assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertCanUnclaim, assertClaimable, assertDisputed, assertJobClient, assertNewWorkAvailable, assertParticipants, assertSettlementAllowed } from "./lifecycle.js";
 import { rateLimit, requestIdentity } from "./rate-limit.js";
@@ -217,6 +218,8 @@ jobsRouter.post(
     }
   }),
 );
+
+jobsRouter.get("/templates", (_request, response) => response.json({ data: jobTemplates }));
 
 jobsRouter.get(
   "/ready",

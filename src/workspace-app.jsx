@@ -244,6 +244,7 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
   const [draftPrompt, setDraftPrompt] = useState('');
   const [drafting, setDrafting] = useState(false);
   const [quality, setQuality] = useState(null);
+  const [templates, setTemplates] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [feedback, setFeedback] = useState(null);
@@ -288,6 +289,20 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
     }, 1000);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [title, description, criteria, deadlineAt, session.token]);
+
+  useEffect(() => {
+    let cancelled = false;
+    JobsAIAPI.jobTemplates().then(response => { if (!cancelled) setTemplates(Array.isArray(response?.data) ? response.data : []); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  function applyTemplate(templateId) {
+    const template = templates.find(item => item.id === templateId);
+    if (!template) return;
+    if ((title || description || criteria) && !window.confirm('Replace the title, description, category, and acceptance criteria you already entered?')) return;
+    setTitle(template.title); setDescription(template.description); setCriteria(template.acceptanceCriteria.join('\n')); setCategory(template.category);
+    setFeedback({ title: `${template.name} template added`, message: 'Replace every part in [square brackets] with your own details, then add the payment amount and a deadline. The brief strength score shows anything still missing.', kind: 'info' });
+  }
 
   async function draftFromSentence() {
     const prompt = draftPrompt.trim();
@@ -380,6 +395,7 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
   return <div className="create-job-grid">
     <form className="create-job-form" noValidate onSubmit={createJob}>
       <div className="create-job-form-heading"><span className="eyebrow">JOB DETAILS</span><h2>Describe the work.</h2><button type="button" className="text-info-button" onClick={() => setJobInfo({ title: 'Write a clear job brief', paragraphs: ['Describe the task and expected output. Add acceptance criteria that make completion easy to review. You can set an optional deadline. Creating a job does not move funds; funding is a separate wallet approval.'] })}>Writing a clear brief</button></div>
+      {templates.length > 0 && <label className="job-template-picker">Start from a template <small>Optional</small><select value="" onChange={event => applyTemplate(event.target.value)} disabled={saving || drafting}><option value="">Choose a ready-made brief…</option>{templates.map(template => <option key={template.id} value={template.id}>{template.name} — {template.summary}</option>)}</select></label>}
       <div className="job-draft-box"><label htmlFor="job-draft-prompt">Start from one sentence <small>Optional</small></label><textarea id="job-draft-prompt" rows="2" maxLength="600" placeholder="e.g. Translate my restaurant menu into Spanish and French, keeping prices and dish names" value={draftPrompt} onChange={event => setDraftPrompt(event.target.value)} /><div className="job-draft-actions"><button type="button" className="pill outline" onClick={draftFromSentence} disabled={drafting || saving}>{drafting ? 'Drafting…' : 'Draft the brief'}</button><small>AI fills in the fields below for you to edit.</small></div></div>
       <label>Job title<input required minLength="3" maxLength="160" value={title} onChange={event => setTitle(event.target.value)} /></label>
       <label>Description<textarea required maxLength="20000" rows="5" value={description} onChange={event => setDescription(event.target.value)} /></label>

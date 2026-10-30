@@ -13,7 +13,7 @@ export type JobQualityReport = { score: number; grade: "strong" | "okay" | "need
 
 const DELIVERABLE_WORDS = /\b(deliver(?:ed|able)?s?|file|files|pdf|docx?|csv|xlsx|spreadsheet|html|css|figma|png|jpe?g|svg|markdown|google doc|repo(?:sitory)?|zip|link|url|slides?|deck|words?|format)\b/i;
 const INPUT_WORDS = /\b(provide[ds]?|will share|i(?:'| wi)ll send|attached|attach|access to|using (?:my|our|the)|existing|current|input[s]?|source material|brand (?:colors|guide)|start from scratch)\b/i;
-const MEASURABLE_WORDS = /\d|\b(at least|no more than|under|over|includes?|contains?|mentions?|works on|delivered as|links? to|passes|matches|uses|lists?|cites?|each|every|all|no|without|unchanged|stays?|remains?|exactly|only|follows?)\b/i;
+const MEASURABLE_WORDS = /\d|\b(at least|no more than|under|over|includes?|contains?|mentions?|works on|delivered as|links? to|pass(?:es)?|match(?:es)?|uses|lists?|listed|cites?|each|every|all|no|without|unchanged|stays?|remains?|exactly|only|follows?)\b/i;
 const VAGUE_PHRASES = ["high quality", "high-quality", "good quality", "make it pop", "looks nice", "looks good", "amazing", "awesome", "professional looking", "asap", "as soon as possible", "etc", "and so on", "whatever you think", "best possible"];
 
 function check(id: string, label: string, points: number, earned: number, fix: string): JobQualityCheck {
@@ -49,6 +49,12 @@ export function scoreJobBrief(input: JobQualityInput, now = new Date()): JobQual
     check("deadline", "Deadline set", 10, deadline && Number.isFinite(deadline.getTime()) && deadline > now ? 10 : 0,
       "Set a deadline so workers know whether they can finish in time."),
   ];
-  const score = checks.reduce((total, item) => total + item.earned, 0);
+  const placeholders = [...new Set(text.match(/\[[^\]\n]{1,80}\]/g) ?? [])];
+  checks.push({
+    id: "placeholders", label: "Template placeholders filled in", points: 0, earned: 0, passed: !placeholders.length,
+    fix: placeholders.length ? `Replace the bracketed placeholders (${placeholders.slice(0, 3).join(", ")}) with your details.` : null,
+  });
+  const total = checks.reduce((sum, item) => sum + item.earned, 0);
+  const score = placeholders.length ? Math.min(total, 45) : total;
   return { score, grade: score >= 80 ? "strong" : score >= 50 ? "okay" : "needs_work", checks };
 }

@@ -23,6 +23,7 @@ describe("job brief quality score", () => {
     expect(report.score).toBeLessThan(50);
     const failed = Object.fromEntries(report.checks.filter((item) => !item.passed).map((item) => [item.id, item.fix]));
     expect(Object.keys(failed)).toEqual(["title", "description", "deliverable", "inputs", "criteria_count", "criteria_measurable", "vague", "deadline"]);
+    expect(report.checks.find((item) => item.id === "placeholders")!.passed).toBe(true);
     expect(failed.vague).toContain("\"high quality\"");
     expect(failed.criteria_count).toContain("at least 3");
   });
@@ -38,6 +39,15 @@ describe("job brief quality score", () => {
     expect(byId.criteria_measurable.earned).toBe(8);
     expect(byId.deadline.earned).toBe(0);
     expect(report.grade).toBe("okay");
+  });
+
+  test("caps a brief with unfilled template placeholders", () => {
+    const report = scoreJobBrief(jobQualityInputSchema.parse({ ...strongBrief, title: "Translate my [document type] into Spanish" }), now);
+    const placeholders = report.checks.find((item) => item.id === "placeholders")!;
+    expect(placeholders.passed).toBe(false);
+    expect(placeholders.fix).toContain("[document type]");
+    expect(report.score).toBe(45);
+    expect(report.grade).toBe("needs_work");
   });
 
   test("accepts an empty draft and scores it as needing work", () => {

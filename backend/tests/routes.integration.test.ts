@@ -84,6 +84,18 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
       return { status: response.status, body: await response.json() as any };
     }
 
+    const templates = await get("/v1/jobs/templates", clientToken);
+    expect(templates.status).toBe(200);
+    expect(templates.body.data.map((template: { id: string }) => template.id)).toContain("translation");
+    const quality = await request("/v1/jobs/quality", clientToken, { title: "Logo", description: "Need a logo ASAP.", acceptanceCriteria: ["Looks good"] });
+    expect(quality.status).toBe(200);
+    expect(quality.body.data.grade).toBe("needs_work");
+    if (!process.env.GROQ_API_KEY) {
+      const draft = await request("/v1/jobs/draft", clientToken, { prompt: "Translate my menu into Spanish and French" });
+      expect(draft.status).toBe(503);
+      expect(draft.body.error.code).toBe("job_draft_unconfigured");
+    }
+
     async function createFundedReadyJob(title: string) {
       const created = await request("/v1/jobs", clientToken, {
         title,
