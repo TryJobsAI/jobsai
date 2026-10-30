@@ -273,8 +273,10 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
   useEffect(() => {
     const onOpen = () => { if (!loaded) loadJobs(); };
     document.addEventListener('jobsai:open-create', onOpen);
+    const onRefresh = () => { if (loaded) loadJobs(false); };
+    document.addEventListener('jobsai:refresh-created', onRefresh);
     if (new URLSearchParams(location.search).get('tab') === 'create') onOpen();
-    return () => document.removeEventListener('jobsai:open-create', onOpen);
+    return () => { document.removeEventListener('jobsai:open-create', onOpen); document.removeEventListener('jobsai:refresh-created', onRefresh); };
   }, [loaded, session.token, walletAddress]);
 
   useEffect(() => {
@@ -526,6 +528,121 @@ function AgentManagement({ session }) {
   </section>;
 }
 
+const serviceCategoryOptions = [['writing', 'Writing'], ['image_generation', 'Image creation'], ['research', 'Research'], ['design', 'Design'], ['coding', 'Coding'], ['data', 'Data'], ['other', 'Other']];
+const serviceCategoryLabel = value => serviceCategoryOptions.find(([category]) => category === value)?.[1] || value;
+const emptyServiceForm = { name: '', summary: '', description: '', category: 'writing', criteria: '', asset: 'eth', amount: '', deliveryDays: '3', agentId: '' };
+
+function ServicesPanel({ session }) {
+  const [catalog, setCatalog] = useState([]);
+  const [mine, setMine] = useState([]);
+  const [agents, setAgents] = useState([]);
+  const [category, setCategory] = useState('');
+  const [form, setForm] = useState(emptyServiceForm);
+  const [showForm, setShowForm] = useState(false);
+  const [ordering, setOrdering] = useState(null);
+  const [orderDetails, setOrderDetails] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+  const update = field => event => setForm(current => ({ ...current, [field]: event.target.value }));
+
+  async function load(filter = category) {
+    try {
+      const [listed, own, agentList] = await Promise.all([
+        JobsAIAPI.services(filter),
+        JobsAIAPI.myServices(session.token),
+        JobsAIAPI.myAgents(session.token).catch(() => ({ data: [] })),
+      ]);
+      setCatalog(listed?.data || []);
+      setMine(own?.data || []);
+      setAgents((agentList?.data || []).filter(agent => agent.active));
+      setLoaded(true);
+    } catch (error) {
+      setFeedback({ title: 'Could not load services', message: error.message || 'JobsAI could not load the services catalog.', kind: 'error' });
+    }
+  }
+
+  useEffect(() => {
+    const open = () => { if (!loaded) load(); };
+    document.addEventListener('jobsai:open-services', open);
+    if (new URLSearchParams(location.search).get('tab') === 'services') open();
+    return () => document.removeEventListener('jobsai:open-services', open);
+  }, [loaded, session.token]);
+
+  async function createService(event) {
+    event.preventDefault();
+    const acceptanceCriteria = form.criteria.split('\n').map(item => item.trim()).filter(Boolean);
+    if (event.currentTarget.querySelector(':invalid') || !acceptanceCriteria.length) {
+      setFeedback({ title: 'Check the service details', message: 'Complete every required field and add at least one acceptance criterion, one per line.', kind: 'error' });
+      return;
+    }
+    setBusy(true);
+    try {
+      await JobsAIAPI.createService({ name: form.name, summary: form.summary, description: form.description, category: form.category, acceptanceCriteria, asset: form.asset, amount: form.amount, deliveryDays: Number(form.deliveryDays), ...(form.agentId ? { agentId: form.agentId } : {}) }, session.token);
+      setForm(emptyServiceForm); setShowForm(false);
+      await load();
+      setFeedback({ title: 'Service listed', message: 'Clients can now find it in the catalog and order it at your fixed price. Paid orders go straight to you, or to the AI worker you chose.', kind: 'success' });
+    } catch (error) {
+      setFeedback({ title: 'Could not list service', message: error.message || 'JobsAI could not list this service.', kind: 'error' });
+    } finally { setBusy(false); }
+  }
+
+  async function toggle(service) {
+    setBusy(true);
+    try { await JobsAIAPI.setServiceActive(service.id, !service.active, session.token); await load(); }
+    catch (error) { setFeedback({ title: 'Could not update service', message: error.message || 'JobsAI could not update this service.', kind: 'error' }); }
+    finally { setBusy(false); }
+  }
+
+  async function order(event) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await JobsAIAPI.orderService(ordering.id, orderDetails.trim(), session.token);
+      setOrdering(null); setOrderDetails('');
+      document.dispatchEvent(new Event('jobsai:refresh-created'));
+      setFeedback({ title: 'Order created', message: `Fund ${ordering.amount} ${ordering.asset} from Create a job → Created jobs. Once the deposit is verified, the order goes straight to this provider with a ${ordering.deliveryDays}-day deadline.`, kind: 'success', openTab: 'create' });
+    } catch (error) {
+      setFeedback({ title: 'Could not order service', message: error.message || 'JobsAI could not create this order.', kind: 'error' });
+    } finally { setBusy(false); }
+  }
+
+  return <section className="services-panel">
+    <div className="services-toolbar">
+      <label>Category<select value={category} onChange={event => { setCategory(event.target.value); load(event.target.value); }}><option value="">All categories</option>{serviceCategoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <button className="pill primary" onClick={() => setShowForm(value => !value)}>{showForm ? 'Close form' : 'Offer a service'}</button>
+    </div>
+    {showForm && <form className="create-job-form service-form" noValidate onSubmit={createService}>
+      <div className="create-job-form-heading"><span className="eyebrow">YOUR SERVICE</span><h2>Sell a fixed-price service.</h2><p>Clients order it at this price and fund escrow before work starts. Paid orders arrive already assigned to you, with a deadline set by your delivery time.</p></div>
+      <label>Service name<input required minLength="3" maxLength="80" value={form.name} onChange={update('name')} placeholder="Blog post rewrite" /></label>
+      <label>One-line summary<input required maxLength="200" value={form.summary} onChange={update('summary')} placeholder="I rewrite one blog post up to 1,500 words for clarity." /></label>
+      <label>What the client gets<textarea required maxLength="5000" rows="4" value={form.description} onChange={update('description')} placeholder="What you need from the client, what you deliver, and in what format." /></label>
+      <label>Acceptance criteria <small>One per line</small><textarea required rows="3" value={form.criteria} onChange={update('criteria')} /></label>
+      <div className="create-job-payment-row"><label>Category<select value={form.category} onChange={update('category')}>{serviceCategoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Delivery time<select value={form.deliveryDays} onChange={update('deliveryDays')}>{[1, 2, 3, 5, 7, 14, 30].map(days => <option key={days} value={days}>{days} {days === 1 ? 'day' : 'days'}</option>)}</select></label></div>
+      <div className="create-job-payment-row"><label>Payment asset<select value={form.asset} onChange={update('asset')}><option value="eth">ETH</option><option value="usdg">USDG</option></select></label><label>Fixed price<input required inputMode="decimal" pattern="(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,18})?" value={form.amount} onChange={update('amount')} /></label></div>
+      <label>Fulfilled by<select value={form.agentId} onChange={update('agentId')}><option value="">Me (human)</option>{agents.map(agent => <option key={agent.id} value={agent.id}>AI worker · {agent.name}</option>)}</select></label>
+      <button className="pill primary" type="submit" disabled={busy}>List service</button>
+    </form>}
+    <div className="services-grid">{catalog.map(service => <article className="service-card" key={service.id}>
+      <div className="service-card-top"><span className="agent-work-badge">{service.agent ? `AI worker · ${service.agent.name}` : 'Human provider'}</span><span className="service-category">{serviceCategoryLabel(service.category)}</span></div>
+      <h3>{service.name}</h3><p>{service.summary}</p>
+      <dl><div><dt>Price</dt><dd>{service.amount} {service.asset}</dd></div><div><dt>Delivery</dt><dd>{service.deliveryDays} {service.deliveryDays === 1 ? 'day' : 'days'}</dd></div><div><dt>Completed</dt><dd>{service.completedJobs}</dd></div></dl>
+      <button className="pill outline" onClick={() => { setOrdering(service); setOrderDetails(''); }}>View and order</button>
+    </article>)}</div>
+    {loaded && !catalog.length && <p className="created-jobs-empty">No services are listed in this category yet. Offer the first one.</p>}
+    {mine.length > 0 && <section className="created-jobs-card services-mine"><div className="created-jobs-heading"><div><span className="eyebrow">YOUR LISTINGS</span><h2>My services</h2></div></div>
+      <div className="created-jobs-list">{mine.map(service => <article className="created-job-item" key={service.id}><div className="created-job-summary"><h3>{service.name}</h3><strong>{service.amount} {service.asset}</strong></div><p>{service.active ? 'Listed' : 'Paused'} · {service.completedJobs} completed · {service.agent ? `AI worker · ${service.agent.name}` : 'Fulfilled by you'}</p><button className="pill outline" onClick={() => toggle(service)} disabled={busy}>{service.active ? 'Pause listing' : 'List again'}</button></article>)}</div>
+    </section>}
+    {ordering && <div className="workspace-overlay"><section className="workspace-modal workspace-information workflow-dialog" role="dialog" aria-modal="true" aria-labelledby="service-order-title">
+      <span className="workspace-modal-symbol" aria-hidden="true">◇</span><h2 id="service-order-title">{ordering.name}</h2><p>{ordering.amount} {ordering.asset} · delivered in {ordering.deliveryDays} {ordering.deliveryDays === 1 ? 'day' : 'days'} · {ordering.agent ? `AI worker · ${ordering.agent.name}` : 'Human provider'}</p>
+      <p>{ordering.description}</p><h3>Acceptance criteria</h3><ul>{ordering.acceptanceCriteria.map((item, index) => <li key={index}>{item}</li>)}</ul>
+      <form onSubmit={order}><label>Your details <small>Optional</small><textarea rows="3" maxLength="5000" value={orderDetails} onChange={event => setOrderDetails(event.target.value)} placeholder="Links, files to use, or anything the provider needs to know." /></label>
+        <div className="workflow-dialog-actions"><button type="button" className="pill outline" onClick={() => setOrdering(null)}>Close</button><button type="submit" className="pill primary" disabled={busy}>Order for {ordering.amount} {ordering.asset}</button></div></form>
+    </section></div>}
+    {feedback && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="services-feedback-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'success' ? '✓' : '!'}</span><h2 id="services-feedback-title">{feedback.title}</h2><p>{feedback.message}</p><div className="workflow-dialog-actions">{feedback.openTab && <button className="pill outline" data-open-tab={feedback.openTab} onClick={() => setFeedback(null)}>Go to funding</button>}<button className="pill primary" onClick={() => setFeedback(null)}>Got it</button></div></section></div>}
+  </section>;
+}
+
 function WorkspaceContext() {
   const { address, chainId, isConnected, isReconnecting } = useAccount();
   const { disconnectAsync } = useDisconnect();
@@ -535,6 +652,7 @@ function WorkspaceContext() {
   const workRoot = document.getElementById('work-management-root');
   const createJobRoot = document.getElementById('create-job-root');
   const agentsRoot = document.getElementById('agents-root');
+  const servicesRoot = document.getElementById('services-root');
 
   useEffect(() => {
     if (!session?.token) { goToAuth(); return; }
@@ -553,13 +671,14 @@ function WorkspaceContext() {
     goToAuth();
   }
 
-  if (!header || !jobsRoot || !workRoot || !createJobRoot || !agentsRoot || !session?.token) return null;
+  if (!header || !jobsRoot || !workRoot || !createJobRoot || !agentsRoot || !servicesRoot || !session?.token) return null;
   return <>
     {createPortal(<><ConnectButton.Custom>{({ account, openAccountModal, mounted }) => <button className="workspace-account-button" onClick={openAccountModal} disabled={!mounted || !account} aria-label={`Connected wallet ${account?.displayName || ''}`}><span className="workspace-account-status" />{account?.displayName || 'Connected wallet'}</button>}</ConnectButton.Custom><button className="workspace-signout" onClick={signOut}>Sign out</button></>, header)}
     {createPortal(<FundedJobs session={session} />, jobsRoot)}
     {createPortal(<MyWork session={session} walletAddress={address} />, workRoot)}
     {createPortal(<CreateJobPanel session={session} walletAddress={address} chainId={chainId} />, createJobRoot)}
     {createPortal(<AgentManagement session={session} />, agentsRoot)}
+    {createPortal(<ServicesPanel session={session} />, servicesRoot)}
   </>;
 }
 

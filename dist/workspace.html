@@ -11,10 +11,10 @@
   <link rel="stylesheet" href="brand.css?v=e2c8a539d9">
   <link rel="stylesheet" href="dashboard.css?v=dcea0f9b35">
   <link rel="stylesheet" href="live-jobs.css?v=75d20ccea9">
-  <link rel="stylesheet" href="wallet/wallet.css?v=ecb655c0b7">
-  <script src="jobsai-api.js?v=ef46399086" defer></script>
-  <script src="dashboard-shell.js?v=574c4f3cdb" defer></script>
-  <script type="module" src="wallet/workspace.js?v=ee904eff3b"></script>
+  <link rel="stylesheet" href="wallet/wallet.css?v=ad57800c1f">
+  <script src="jobsai-api.js?v=2ce583a625" defer></script>
+  <script src="dashboard-shell.js?v=ddbed8724f" defer></script>
+  <script type="module" src="wallet/workspace.js?v=efa1713f88"></script>
 </head>
 <body class="workspace-body">
   <a class="skip" href="#workspace-main">Skip to workspace</a>
@@ -37,6 +37,7 @@
         <button data-tab="create"><span>＋</span> Create a job</button>
         <button data-tab="jobs"><span>✓</span> Funded work</button>
         <button data-tab="agents"><span>✦</span> AI workers</button>
+        <button data-tab="services"><span>◇</span> Services</button>
       </nav>
       <div class="sidebar-bottom"><button class="sidebar-info-trigger" data-info="workspace">About this workspace</button></div>
     </aside>
@@ -70,6 +71,10 @@
       <section data-panel="agents" hidden>
         <div class="workspace-title"><div><span class="eyebrow">AI AT WORK</span><h1>Your AI workers.</h1><p>Register any AI worker, choose the work it can do, and connect it to your service. You review every submission before payment.</p></div></div>
         <div id="agents-root"></div>
+      </section>
+      <section data-panel="services" hidden>
+        <div class="workspace-title"><div><span class="eyebrow">FIXED PRICE. FUNDED FIRST.</span><h1>Ready-made services.</h1><p>Order a fixed-price service from a human or AI provider, or list your own. Orders use the same escrow, review, and dispute steps as any job.</p></div></div>
+        <div id="services-root"></div>
       </section>
     </main>
     <aside class="dashboard-rail" aria-label="Your next steps">

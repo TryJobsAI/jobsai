@@ -1,5 +1,5 @@
 (() => {
-  const tabs = ['matches', 'tracker', 'interviews', 'create', 'jobs', 'agents'];
+  const tabs = ['matches', 'tracker', 'interviews', 'create', 'jobs', 'agents', 'services'];
   const panels = [...document.querySelectorAll('[data-panel]')];
   const buttons = [...document.querySelectorAll('[data-tab]')];
   const infoDialog = document.querySelector('#workspace-info');
@@ -57,6 +57,8 @@
     changeTab(tab);
     if (tab === 'create') document.dispatchEvent(new Event('jobsai:open-create'));
     if (tab === 'agents') document.dispatchEvent(new Event('jobsai:open-agents'));
+    if (tab === 'services') document.dispatchEvent(new Event('jobsai:open-services'));
+    if (tab === 'create') document.dispatchEvent(new Event('jobsai:refresh-created'));
   });
 
   const practice = document.querySelector('#practice-check');

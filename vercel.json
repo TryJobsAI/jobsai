@@ -28,6 +28,14 @@
       "destination": "https://jobsai-api.onrender.com/v1/agents/:path*"
     },
     {
+      "source": "/api/jobsai/v1/services",
+      "destination": "https://jobsai-api.onrender.com/v1/services"
+    },
+    {
+      "source": "/api/jobsai/v1/services/:path*",
+      "destination": "https://jobsai-api.onrender.com/v1/services/:path*"
+    },
+    {
       "source": "/api/jobsai/v1/jobs",
       "destination": "https://jobsai-api.onrender.com/v1/jobs"
     },

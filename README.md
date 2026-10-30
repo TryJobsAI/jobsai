@@ -113,6 +113,7 @@ Wallet authentication uses SIWE. Authenticated clients and workers can use these
 | Draft a job brief from one sentence | `POST /v1/jobs/draft` |
 | Score a job brief and list suggested fixes | `POST /v1/jobs/quality` |
 | List ready-made job brief templates | `GET /v1/jobs/templates` |
+| Browse, list, pause, and order fixed-price services | `GET /v1/services`, `GET /v1/services/mine`, `POST /v1/services`, `PATCH /v1/services/:id`, `POST /v1/services/:id/order` |
 | Create and fund a job | `POST /v1/jobs`, `POST /v1/jobs/:id/fund` |
 | Cancel a funded job before it is claimed | `POST /v1/jobs/:id/cancel` |
 | Find and claim work | `GET /v1/jobs/ready`, `POST /v1/jobs/:id/claim`, `POST /v1/jobs/:id/unclaim`, `POST /v1/jobs/:id/release-worker` |

@@ -52,6 +52,7 @@ type JobRow = {
   settlement_recipient?: string | null;
   settlement_payout_signed_tx?: string | null;
   settlement_lease_until?: Date | null;
+  service_id: string | null;
 };
 
 const jobSelect = `SELECT j.*, c.wallet_address AS client_wallet, d.wallet_address AS doer_wallet,
@@ -71,6 +72,7 @@ function presentJob(job: JobRow) {
     clientWallet: job.client_wallet,
     doerWallet: job.doer_wallet,
     category: job.category,
+    serviceId: job.service_id,
     workerType: job.doer_agent_id ? "ai" : job.doer_id ? "human" : null,
     doerAgent: job.doer_agent_id ? { id: job.doer_agent_id, name: job.doer_agent_name } : null,
     title: job.title,
@@ -111,6 +113,92 @@ async function appendEvent(
   );
 }
 
+export type NewJobRecord = {
+  title: string;
+  description: string;
+  acceptanceCriteria: string[];
+  category: string;
+  asset: JobAsset;
+  amountRaw: bigint;
+  deadlineAt: Date | null;
+  service?: { id: string; providerId: string; agentId: string | null };
+};
+
+export async function createJobRecord(clientId: string, job: NewJobRecord) {
+  const id = randomUUID();
+  const escrow = makeEscrowWallet(id);
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`jobs:create:${clientId}`]);
+    const recent = await client.query<{ count: string }>(
+      "SELECT count(*)::text AS count FROM jobs WHERE client_id=$1 AND created_at>now()-interval '1 hour'",
+      [clientId],
+    );
+    if (Number(recent.rows[0].count) >= 10) throw new ApiError(429, "job_creation_rate_limited", "You have reached the job creation limit. Try again later.");
+    await client.query(
+      `INSERT INTO jobs (id,client_id,title,description,acceptance_criteria,asset,amount_raw,token_address,deadline_at,category,service_id,reserved_doer_id,reserved_agent_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      [
+        id,
+        clientId,
+        job.title,
+        job.description,
+        JSON.stringify(job.acceptanceCriteria),
+        job.asset,
+        job.amountRaw.toString(),
+        job.asset === "usdg" ? config.USDG_TOKEN_ADDRESS!.toLowerCase() : null,
+        job.deadlineAt,
+        job.category,
+        job.service?.id ?? null,
+        job.service?.providerId ?? null,
+        job.service?.agentId ?? null,
+      ],
+    );
+    await client.query(
+      "INSERT INTO job_escrow_wallets (job_id,address,encrypted_private_key) VALUES ($1,$2,$3)",
+      [id, escrow.address, escrow.encryptedPrivateKey],
+    );
+    await appendEvent(client, id, clientId, job.service ? "job.service_ordered" : "job.created", {
+      asset: job.asset,
+      amountRaw: job.amountRaw.toString(),
+      ...(job.service ? { serviceId: job.service.id } : {}),
+    });
+    const created = await client.query<JobRow>(`${jobSelect} WHERE j.id=$1`, [id]);
+    await client.query("COMMIT");
+    return presentJob(created.rows[0]);
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// A funded service order goes straight to its provider instead of the public board.
+export async function assignFundedServiceOrder(client: PoolClient, jobId: string) {
+  const reserved = await client.query<{ service_id: string | null; reserved_doer_id: string | null; reserved_agent_id: string | null; delivery_days: number | null; agent_active: boolean | null }>(
+    `SELECT j.service_id,j.reserved_doer_id,j.reserved_agent_id,sv.delivery_days,a.active AS agent_active
+       FROM jobs j LEFT JOIN services sv ON sv.id=j.service_id LEFT JOIN ai_agents a ON a.id=j.reserved_agent_id
+      WHERE j.id=$1 AND j.status='ready'`,
+    [jobId],
+  );
+  const order = reserved.rows[0];
+  if (!order?.service_id || !order.reserved_doer_id) return "ready";
+  const agentId = order.reserved_agent_id && order.agent_active ? order.reserved_agent_id : null;
+  await client.query(
+    `UPDATE jobs SET status='in_progress',doer_id=$2,doer_agent_id=$3,claimed_at=now(),
+            deadline_at=now()+($4::int*interval '1 day'),updated_at=now() WHERE id=$1`,
+    [jobId, order.reserved_doer_id, agentId, order.delivery_days ?? 7],
+  );
+  await appendEvent(client, jobId, order.reserved_doer_id, "job.claimed", {
+    via: "service_order",
+    serviceId: order.service_id,
+    ...(agentId ? { workerType: "ai", agentId } : { workerType: "human" }),
+  });
+  return "in_progress";
+}
+
 export async function releaseExpiredClaims() {
   let released = 0;
   for (let batch = 0; batch < 5; batch++) {
@@ -120,6 +208,7 @@ export async function releaseExpiredClaims() {
          WHERE j.status='in_progress'
            AND j.claimed_at<=now()-($1::int*interval '1 hour')
            AND NOT EXISTS (SELECT 1 FROM job_submissions sub WHERE sub.job_id=j.id)
+           AND (j.service_id IS NULL OR j.doer_id IS DISTINCT FROM j.reserved_doer_id)
          ORDER BY j.claimed_at
          LIMIT 100
          FOR UPDATE SKIP LOCKED
@@ -170,52 +259,16 @@ jobsRouter.post(
     const amount = parseJobAmount(input.asset, input.amount, config.USDG_DECIMALS);
     const minimum = parseJobAmount(input.asset, input.asset === "eth" ? config.MIN_JOB_ETH_AMOUNT : config.MIN_JOB_USDG_AMOUNT, config.USDG_DECIMALS);
     assertMinimumJobAmount(amount, minimum, input.asset);
-    const id = randomUUID();
-    const escrow = makeEscrowWallet(id);
-    const deadlineAt = parseDeadline(request.body?.deadlineAt);
-
-    const client = await db.connect();
-    try {
-      await client.query("BEGIN");
-      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`jobs:create:${request.auth!.userId}`]);
-      const recent = await client.query<{ count: string }>(
-        "SELECT count(*)::text AS count FROM jobs WHERE client_id=$1 AND created_at>now()-interval '1 hour'",
-        [request.auth!.userId],
-      );
-      if (Number(recent.rows[0].count) >= 10) throw new ApiError(429, "job_creation_rate_limited", "You have reached the job creation limit. Try again later.");
-      await client.query(
-        `INSERT INTO jobs (id,client_id,title,description,acceptance_criteria,asset,amount_raw,token_address,deadline_at,category)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [
-          id,
-          request.auth!.userId,
-          input.title,
-          input.description,
-          JSON.stringify(input.acceptanceCriteria),
-          input.asset,
-          amount.toString(),
-          input.asset === "usdg" ? config.USDG_TOKEN_ADDRESS!.toLowerCase() : null,
-          deadlineAt,
-          input.category,
-        ],
-      );
-      await client.query(
-        "INSERT INTO job_escrow_wallets (job_id,address,encrypted_private_key) VALUES ($1,$2,$3)",
-        [id, escrow.address, escrow.encryptedPrivateKey],
-      );
-      await appendEvent(client, id, request.auth!.userId, "job.created", {
-        asset: input.asset,
-        amountRaw: amount.toString(),
-      });
-      const created = await client.query<JobRow>(`${jobSelect} WHERE j.id=$1`, [id]);
-      await client.query("COMMIT");
-      response.status(201).json({ data: presentJob(created.rows[0]) });
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
-    }
+    const created = await createJobRecord(request.auth!.userId, {
+      title: input.title,
+      description: input.description,
+      acceptanceCriteria: input.acceptanceCriteria,
+      category: input.category,
+      asset: input.asset,
+      amountRaw: amount,
+      deadlineAt: parseDeadline(request.body?.deadlineAt),
+    });
+    response.status(201).json({ data: created });
   }),
 );
 
@@ -281,8 +334,8 @@ jobsRouter.post(
     const terms = job.rows[0];
     assertJobClient(terms.client_wallet, request.auth!.walletAddress);
     if (terms.status !== "awaiting_funding") {
-      if (terms.status === "ready" && await fundingHashMatches(id, txHash)) {
-        response.json({ data: { jobId: id, status: "ready", transactionHash: txHash }, idempotentReplay: true });
+      if (await fundingHashMatches(id, txHash)) {
+        response.json({ data: { jobId: id, status: terms.status, transactionHash: txHash }, idempotentReplay: true });
         return;
       }
       throw new ApiError(409, "job_not_fundable", "This job is not awaiting funding.");
@@ -298,9 +351,9 @@ jobsRouter.post(
         [id],
       );
       const current = locked.rows[0];
-      if (current.status === "ready" && current.funding_tx_hash === txHash.toLowerCase()) {
+      if (current.status !== "awaiting_funding" && current.funding_tx_hash === txHash.toLowerCase()) {
         await client.query("COMMIT");
-        response.json({ data: { jobId: id, status: "ready", transactionHash: txHash }, idempotentReplay: true });
+        response.json({ data: { jobId: id, status: current.status, transactionHash: txHash }, idempotentReplay: true });
         return;
       }
       if (current.status !== "awaiting_funding")
@@ -313,8 +366,9 @@ jobsRouter.post(
         transactionHash: verified.hash,
         blockNumber: verified.blockNumber,
       });
+      const status = await assignFundedServiceOrder(client, id);
       await client.query("COMMIT");
-      response.json({ data: { jobId: id, status: "ready", transactionHash: verified.hash } });
+      response.json({ data: { jobId: id, status, transactionHash: verified.hash } });
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

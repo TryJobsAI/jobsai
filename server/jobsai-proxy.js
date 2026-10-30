@@ -19,12 +19,12 @@ function json(status, code, message) {
 
 export async function proxyJobsAI(request) {
   const method = request.method.toUpperCase();
-  if (!["GET", "POST"].includes(method)) return json(405, "method_not_allowed", "This method is not available.");
+  if (!["GET", "POST", "PATCH"].includes(method)) return json(405, "method_not_allowed", "This method is not available.");
 
   const incoming = new URL(request.url);
   if (!incoming.pathname.startsWith(`${API_PREFIX}/`)) return json(404, "not_found", "This endpoint does not exist.");
   const apiPath = incoming.pathname.slice(API_PREFIX.length);
-  if (!(AUTH_ROUTES.has(apiPath) || apiPath === "/v1/jobs" || apiPath.startsWith("/v1/jobs/") || apiPath.startsWith("/v1/team/") || apiPath === "/v1/media/images"))
+  if (!(AUTH_ROUTES.has(apiPath) || apiPath === "/v1/jobs" || apiPath.startsWith("/v1/jobs/") || apiPath === "/v1/services" || apiPath.startsWith("/v1/services/") || apiPath.startsWith("/v1/team/") || apiPath === "/v1/media/images"))
     return json(404, "not_found", "This endpoint does not exist.");
 
   if (apiPath === "/v1/media/images" && (method !== "POST" || !IMAGE_CONTENT_TYPES.has((request.headers.get("content-type") || "").split(";")[0].trim().toLowerCase())))
@@ -32,7 +32,7 @@ export async function proxyJobsAI(request) {
   const maxBodyBytes = apiPath === "/v1/media/images" ? MAX_IMAGE_BYTES : MAX_BODY_BYTES;
   const declaredSize = Number(request.headers.get("content-length") || 0);
   if (declaredSize > maxBodyBytes) return json(413, "request_too_large", "The request is too large.");
-  const body = method === "POST" ? await request.arrayBuffer() : undefined;
+  const body = method === "GET" ? undefined : await request.arrayBuffer();
   if (body && body.byteLength > maxBodyBytes) return json(413, "request_too_large", "The request is too large.");
 
   let base;
@@ -51,7 +51,7 @@ export async function proxyJobsAI(request) {
   const contentType = request.headers.get("content-type");
   if (authorization) headers.set("authorization", authorization);
   if (cookie && apiPath.startsWith("/v1/team/")) headers.set("cookie", cookie);
-  if (contentType && method === "POST") headers.set("content-type", contentType);
+  if (contentType && method !== "GET") headers.set("content-type", contentType);
 
   try {
     const upstream = await fetch(target, { method, headers, body });
