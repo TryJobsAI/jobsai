@@ -10,6 +10,7 @@ import { db } from "./db/index.js";
 import { makeEscrowWallet, verifyJobFunding, type FundingTerms, type JobAsset } from "./escrow.js";
 import { ApiError, asyncRoute } from "./http.js";
 import { processSettlement } from "./settlement.js";
+import { draftJobSpec, jobDraftRequestSchema } from "./job-draft.js";
 import { assertMinimumJobAmount, createJobInputSchema, parseDeadline, parseJobAmount, submissionInputSchema } from "./job-input.js";
 import { assertActiveClaimCapacity, assertCanCancelFundedJob, assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertCanUnclaim, assertClaimable, assertDisputed, assertJobClient, assertNewWorkAvailable, assertParticipants, assertSettlementAllowed } from "./lifecycle.js";
 import { rateLimit, requestIdentity } from "./rate-limit.js";
@@ -135,6 +136,18 @@ export async function releaseExpiredClaims() {
   }
   return released;
 }
+
+jobsRouter.post(
+  "/draft",
+  requireAuth,
+  rateLimit([{ scope: "job-draft-user", limit: 20, windowSeconds: 3_600, identity: requestIdentity.authenticatedUser }]),
+  asyncRoute(async (request, response) => {
+    assertNewWorkAvailable(config.PAUSE_NEW_WORK);
+    const { prompt } = jobDraftRequestSchema.parse(request.body);
+    const draft = await draftJobSpec(prompt, { apiKey: config.GROQ_API_KEY, model: config.JOB_DRAFT_MODEL });
+    response.json({ data: draft });
+  }),
+);
 
 jobsRouter.post(
   "/",

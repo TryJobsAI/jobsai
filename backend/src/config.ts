@@ -39,6 +39,8 @@ const env = z
     CLOUDINARY_API_KEY: optionalString,
     CLOUDINARY_API_SECRET: optionalString,
     CLOUDINARY_CLOUD_NAME: optionalString,
+    GROQ_API_KEY: optionalString,
+    JOB_DRAFT_MODEL: z.string().min(1).default("llama-3.3-70b-versatile"),
   })
   .parse(process.env);
 

@@ -40,6 +40,7 @@
     createAgent: (input, token) => request('/v1/agents', { method: 'POST', token, body: input }),
     rotateAgentToken: (agentId, expiresInDays, token) => request(`/v1/agents/${encodeURIComponent(agentId)}/runtime-token`, { method: 'POST', token, body: { expiresInDays } }),
     setAgentActive: (agentId, active, token) => request(`/v1/agents/${encodeURIComponent(agentId)}`, { method: 'PATCH', token, body: { active } }),
+    draftJob: (prompt, token) => request('/v1/jobs/draft', { method: 'POST', token, body: { prompt } }),
     createJob: (input, token) => request('/v1/jobs', { method: 'POST', token, body: input }),
     fundJob: (jobId, transactionHash, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/fund`, { method: 'POST', token, body: { transactionHash } }),
     cancelJob: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST', token, body: {} }),

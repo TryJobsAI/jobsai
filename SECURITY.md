@@ -58,6 +58,7 @@ The approval threshold will fail closed if fewer than two eligible reviewer wall
 ## Current limits
 
 - A transfer can be delayed or fail. Failed payouts with no signed payout transaction can be retried by the worker with a replacement wallet or handled through team review. Other failures may need help from the JobsAI operations team.
+- "Draft the brief" is optional. When a client uses it, the sentence they type is sent to Groq, an AI model provider, to draft the title, description, category, and acceptance criteria. Nothing is saved or created until the client reviews the draft and creates the job. Do not include private or personal information in that sentence.
 - Sending the wrong asset, amount, network, or destination does not trigger an automatic refund. Check the payment details carefully before sending.
 - JobsAI does not yet automatically return funds when a job sits untouched for too long, or automatically remove old job records. Submission records remain stored. Uploaded images follow the retention settings of JobsAI's image storage provider.
 - No independent security firm has reviewed JobsAI yet. Payments are managed by the JobsAI service and are not governed by a separate blockchain payment contract.

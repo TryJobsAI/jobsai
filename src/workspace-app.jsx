@@ -241,6 +241,8 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
   const [asset, setAsset] = useState('eth');
   const [amount, setAmount] = useState('');
   const [deadlineAt, setDeadlineAt] = useState('');
+  const [draftPrompt, setDraftPrompt] = useState('');
+  const [drafting, setDrafting] = useState(false);
   const [jobs, setJobs] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [feedback, setFeedback] = useState(null);
@@ -272,6 +274,23 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
     if (new URLSearchParams(location.search).get('tab') === 'create') onOpen();
     return () => document.removeEventListener('jobsai:open-create', onOpen);
   }, [loaded, session.token, walletAddress]);
+
+  async function draftFromSentence() {
+    const prompt = draftPrompt.trim();
+    if (prompt.length < 10) {
+      setFeedback({ title: 'Describe the work first', message: 'Write one sentence of at least 10 characters about what you need done.', kind: 'error' });
+      return;
+    }
+    if ((title || description || criteria) && !window.confirm('Replace the title, description, category, and acceptance criteria you already entered?')) return;
+    setDrafting(true);
+    try {
+      const { data } = await JobsAIAPI.draftJob(prompt, session.token);
+      setTitle(data.title); setDescription(data.description); setCriteria(data.acceptanceCriteria.join('\n')); setCategory(data.category);
+      setFeedback({ title: 'Draft ready to review', message: 'Check the title, description, category, and acceptance criteria, then add the payment amount and an optional deadline. Nothing is created until you press Create job.', kind: 'success' });
+    } catch (error) {
+      setFeedback({ title: 'Could not draft this job', message: error.message || 'JobsAI could not draft this job. You can still write the brief manually.', kind: 'error' });
+    } finally { setDrafting(false); }
+  }
 
   async function createJob(event) {
     event.preventDefault();
@@ -347,6 +366,7 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
   return <div className="create-job-grid">
     <form className="create-job-form" noValidate onSubmit={createJob}>
       <div className="create-job-form-heading"><span className="eyebrow">JOB DETAILS</span><h2>Describe the work.</h2><button type="button" className="text-info-button" onClick={() => setJobInfo({ title: 'Write a clear job brief', paragraphs: ['Describe the task and expected output. Add acceptance criteria that make completion easy to review. You can set an optional deadline. Creating a job does not move funds; funding is a separate wallet approval.'] })}>Writing a clear brief</button></div>
+      <div className="job-draft-box"><label htmlFor="job-draft-prompt">Start from one sentence <small>Optional</small></label><textarea id="job-draft-prompt" rows="2" maxLength="600" placeholder="e.g. Translate my restaurant menu into Spanish and French, keeping prices and dish names" value={draftPrompt} onChange={event => setDraftPrompt(event.target.value)} /><div className="job-draft-actions"><button type="button" className="pill outline" onClick={draftFromSentence} disabled={drafting || saving}>{drafting ? 'Drafting…' : 'Draft the brief'}</button><small>AI fills in the fields below for you to edit.</small></div></div>
       <label>Job title<input required minLength="3" maxLength="160" value={title} onChange={event => setTitle(event.target.value)} /></label>
       <label>Description<textarea required maxLength="20000" rows="5" value={description} onChange={event => setDescription(event.target.value)} /></label>
       <label>Work category<select value={category} onChange={event => setCategory(event.target.value)}><option value="writing">Article or social thread writing</option><option value="image_generation">Image generation</option><option value="research">Research</option><option value="design">Design</option><option value="coding">Coding</option><option value="data">Data</option><option value="other">Other</option></select></label>

@@ -110,6 +110,7 @@ Wallet authentication uses SIWE. Authenticated clients and workers can use these
 | Action | Endpoint |
 | --- | --- |
 | Sign in | `POST /v1/auth/nonce`, `POST /v1/auth/verify` |
+| Draft a job brief from one sentence | `POST /v1/jobs/draft` |
 | Create and fund a job | `POST /v1/jobs`, `POST /v1/jobs/:id/fund` |
 | Cancel a funded job before it is claimed | `POST /v1/jobs/:id/cancel` |
 | Find and claim work | `GET /v1/jobs/ready`, `POST /v1/jobs/:id/claim`, `POST /v1/jobs/:id/unclaim`, `POST /v1/jobs/:id/release-worker` |
