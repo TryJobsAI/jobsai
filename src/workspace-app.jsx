@@ -243,6 +243,7 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
   const [deadlineAt, setDeadlineAt] = useState('');
   const [draftPrompt, setDraftPrompt] = useState('');
   const [drafting, setDrafting] = useState(false);
+  const [quality, setQuality] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [feedback, setFeedback] = useState(null);
@@ -274,6 +275,19 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
     if (new URLSearchParams(location.search).get('tab') === 'create') onOpen();
     return () => document.removeEventListener('jobsai:open-create', onOpen);
   }, [loaded, session.token, walletAddress]);
+
+  useEffect(() => {
+    if (!title.trim() && !description.trim() && !criteria.trim()) { setQuality(null); return; }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const acceptanceCriteria = criteria.split('\n').map(item => item.trim()).filter(Boolean);
+        const { data } = await JobsAIAPI.scoreJobBrief({ title, description, acceptanceCriteria, ...(deadlineAt ? { deadlineAt: new Date(deadlineAt).toISOString() } : {}) }, session.token);
+        if (!cancelled) setQuality(data);
+      } catch { if (!cancelled) setQuality(null); }
+    }, 1000);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [title, description, criteria, deadlineAt, session.token]);
 
   async function draftFromSentence() {
     const prompt = draftPrompt.trim();
@@ -373,6 +387,7 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
       <div className="criteria-field"><div className="criteria-field-header"><label htmlFor="job-acceptance-criteria">Acceptance criteria</label><button type="button" className="inline-info-button" onClick={() => setJobInfo({ title: 'Acceptance criteria', paragraphs: ['Enter one clear condition per line. For example: “Works on mobile and desktop” or “Include the source files.” The worker and client use these conditions to review each submission and revision.'] })}>How to write criteria</button></div><textarea id="job-acceptance-criteria" required rows="4" value={criteria} onChange={event => setCriteria(event.target.value)} /></div>
       <div className="create-job-payment-row"><label>Payment asset<select value={asset} onChange={event => setAsset(event.target.value)}><option value="eth">ETH</option><option value="usdg">USDG</option></select></label><label>Amount<input required inputMode="decimal" pattern="(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,18})?" value={amount} onChange={event => setAmount(event.target.value)} /></label></div>
       <label>Deadline<input type="datetime-local" value={deadlineAt} onChange={event => setDeadlineAt(event.target.value)} /></label>
+      {quality && <section className={`job-quality job-quality-${quality.grade}`} aria-live="polite" aria-label="Brief strength"><div className="job-quality-heading"><span>Brief strength</span><strong>{quality.score}/100 · {{ strong: 'Strong', okay: 'Okay', needs_work: 'Needs work' }[quality.grade]}</strong></div><div className="job-quality-bar" aria-hidden="true"><i style={{ width: `${quality.score}%` }} /></div>{quality.checks.some(item => !item.passed) ? <ul>{quality.checks.filter(item => !item.passed).map(item => <li key={item.id}><b>{item.label}:</b> {item.fix}</li>)}</ul> : <p>Clear and checkable. Workers know what to deliver and how it will be reviewed.</p>}</section>}
       <button className="pill primary" type="submit" disabled={saving}>Create job</button>
     </form>
     <section className="created-jobs-card" aria-labelledby="created-jobs-title"><div className="created-jobs-heading"><div><span className="eyebrow">YOUR JOBS</span><h2 id="created-jobs-title">Created jobs</h2></div><button className="pill outline" onClick={() => loadJobs()} disabled={saving}>Refresh</button></div>

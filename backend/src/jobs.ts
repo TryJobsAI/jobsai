@@ -11,6 +11,7 @@ import { makeEscrowWallet, verifyJobFunding, type FundingTerms, type JobAsset } 
 import { ApiError, asyncRoute } from "./http.js";
 import { processSettlement } from "./settlement.js";
 import { draftJobSpec, jobDraftRequestSchema } from "./job-draft.js";
+import { jobQualityInputSchema, scoreJobBrief } from "./job-quality.js";
 import { assertMinimumJobAmount, createJobInputSchema, parseDeadline, parseJobAmount, submissionInputSchema } from "./job-input.js";
 import { assertActiveClaimCapacity, assertCanCancelFundedJob, assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertCanUnclaim, assertClaimable, assertDisputed, assertJobClient, assertNewWorkAvailable, assertParticipants, assertSettlementAllowed } from "./lifecycle.js";
 import { rateLimit, requestIdentity } from "./rate-limit.js";
@@ -146,6 +147,14 @@ jobsRouter.post(
     const { prompt } = jobDraftRequestSchema.parse(request.body);
     const draft = await draftJobSpec(prompt, { apiKey: config.GROQ_API_KEY, model: config.JOB_DRAFT_MODEL });
     response.json({ data: draft });
+  }),
+);
+
+jobsRouter.post(
+  "/quality",
+  requireAuth,
+  asyncRoute(async (request, response) => {
+    response.json({ data: scoreJobBrief(jobQualityInputSchema.parse(request.body ?? {})) });
   }),
 );
 
