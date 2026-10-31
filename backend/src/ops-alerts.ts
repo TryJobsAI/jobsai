@@ -1,6 +1,6 @@
 import { config } from "./config.js";
 
-export type OpsAlertEvent = "gas_wallet_below_reserve" | "settlement_attempts_exceeded" | "gas_transaction_replaced";
+export type OpsAlertEvent = "gas_wallet_insufficient_balance" | "settlement_attempts_exceeded" | "gas_transaction_replaced";
 export type OpsAlertDetails = Record<string, string | number>;
 type AlertDependencies = {
   webhookUrl?: string | null;

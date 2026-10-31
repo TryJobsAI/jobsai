@@ -18,7 +18,7 @@ const enabled = process.env.JOBSAI_DB_INTEGRATION === "1" && process.env.JOBSAI_
 const anvilTest = enabled ? test : test.skip;
 setDefaultTimeout(120_000);
 
-anvilTest("Anvil settles ETH and USDG, replaces same-nonce gas, accepts an old late receipt, and pauses on low reserve", async () => {
+anvilTest("Anvil settles ETH and USDG, replaces same-nonce gas, accepts an old late receipt, and backs off when gas funds are insufficient", async () => {
   const [{ db }, { migrate }, { config }, { encryptSecret }, { processSettlement }, { gasWalletAddress, gasAccount }] = await Promise.all([
     import("../src/db/index.js"),
     import("../src/db/migrate.js"),
@@ -188,27 +188,30 @@ anvilTest("Anvil settles ETH and USDG, replaces same-nonce gas, accepts an old l
     expect(lateAttempts.rows.map((row) => row.tx_hash)).toEqual([lateTransaction.hash]);
     expect((await db.query<{ status: string }>("SELECT status FROM job_settlements WHERE job_id=$1", [late.jobId])).rows[0].status).toBe("complete");
 
-    const reservePause = await createSettlementCase("eth", parseEther("0.01"));
-    await fundEscrow(reservePause, "eth");
+    const insufficientFunds = await createSettlementCase("eth", parseEther("0.01"));
+    await fundEscrow(insufficientFunds, "eth");
     await anvilRpc("anvil_setBalance", [gasWalletAddress, toHex(0n)]);
     const capturedLogs: string[] = [];
     const originalConsoleError = console.error;
     console.error = (...values) => capturedLogs.push(values.map(String).join(" "));
     try {
-      for (let attempt = 0; attempt < 4; attempt++)
-        await expect(processSettlement(reservePause.jobId)).rejects.toThrow("Settlement paused before sponsorship");
+      for (let attempt = 0; attempt < 4; attempt++) {
+        if (attempt > 0) await db.query("UPDATE job_settlements SET lease_until=now()-interval '1 second' WHERE job_id=$1", [insufficientFunds.jobId]);
+        await expect(processSettlement(insufficientFunds.jobId)).rejects.toThrow("calculated transaction requirement");
+      }
     } finally {
       console.error = originalConsoleError;
     }
-    expect(capturedLogs.join("\n")).toContain("gas_wallet_below_reserve");
+    expect(capturedLogs.join("\n")).toContain("gas_wallet_insufficient_balance");
     expect(capturedLogs.join("\n")).toContain("settlement_attempts_exceeded");
-    const paused = await db.query<{ attempts: number; error: string; gas_signed_tx: string | null }>(
-      "SELECT attempts,error,gas_signed_tx FROM job_settlements WHERE job_id=$1", [reservePause.jobId],
+    const paused = await db.query<{ attempts: number; error: string; gas_signed_tx: string | null; lease_until: Date }>(
+      "SELECT attempts,error,gas_signed_tx,lease_until FROM job_settlements WHERE job_id=$1", [insufficientFunds.jobId],
     );
     expect(paused.rows[0].attempts).toBe(4);
-    expect(paused.rows[0].error).toContain("before sponsorship");
+    expect(paused.rows[0].error).toContain("calculated transaction requirement");
     expect(paused.rows[0].gas_signed_tx).toBeNull();
-    expect((await db.query("SELECT 1 FROM job_settlement_gas_attempts WHERE job_id=$1", [reservePause.jobId])).rowCount).toBe(0);
+    expect(paused.rows[0].lease_until.getTime()).toBeGreaterThan(Date.now());
+    expect((await db.query("SELECT 1 FROM job_settlement_gas_attempts WHERE job_id=$1", [insufficientFunds.jobId])).rowCount).toBe(0);
   } finally {
     await anvilRpc("anvil_setAutomine", [true]).catch(() => undefined);
     if (jobIds.length) {

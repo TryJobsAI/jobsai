@@ -35,8 +35,21 @@ export function escrowGasReserve(gasPrice: bigint, gasTopUpLimit: bigint, payout
   return gasPrice * (gasTopUpLimit + payoutGasLimit + sweepGasLimit) * 2n;
 }
 
-export function gasWalletRequiredBalance(minimumReserve: bigint, sponsorshipValue: bigint, gasPrice: bigint, gasLimit: bigint) {
-  return minimumReserve + sponsorshipValue + gasPrice * gasLimit;
+export function gasWalletRequiredBalance(sponsorshipValue: bigint, gasPrice: bigint, gasLimit: bigint) {
+  return sponsorshipValue + gasPrice * gasLimit;
+}
+
+async function assertGasWalletCanCover(jobId: string, value: bigint, gasPrice: bigint, gasLimit: bigint) {
+  const required = gasWalletRequiredBalance(value, gasPrice, gasLimit);
+  const balance = await publicClient.getBalance({ address: gasWalletAddress });
+  if (balance >= required) return;
+  await sendOpsAlert("gas_wallet_insufficient_balance", { jobId, balanceWei: balance.toString(), requiredWei: required.toString() });
+  throw new Error("Gas wallet balance is below the calculated transaction requirement. Settlement will retry with backoff.");
+}
+
+export function settlementRetryDelaySeconds(attempt: number) {
+  if (!Number.isInteger(attempt) || attempt < 1) throw new Error("Settlement attempt must be a positive integer.");
+  return Math.min(30 * 2 ** (attempt - 1), 300);
 }
 
 export function replacementGasPrice(previousPrice: bigint, networkPrice: bigint, bumpBps = 2_000n) {
@@ -139,16 +152,7 @@ async function replaceStuckGasTransaction(settlement: Settlement, current: { raw
     throw new Error("The persisted gas transaction cannot be safely repriced.");
   const networkPrice = (await publicClient.getGasPrice()) * 3n / 2n;
   const gasPrice = replacementGasPrice(parsed.gasPrice, networkPrice);
-  const required = gasWalletRequiredBalance(
-    BigInt(config.GAS_WALLET_MIN_BALANCE_WEI),
-    parsed.value ?? 0n,
-    gasPrice,
-    parsed.gas,
-  );
-  if (await publicClient.getBalance({ address: gasWalletAddress }) < required) {
-    await sendOpsAlert("gas_wallet_below_reserve", { jobId: settlement.job_id });
-    throw new Error("Gas wallet reserve is below the configured minimum. Gas transaction replacement paused.");
-  }
+  await assertGasWalletCanCover(settlement.job_id, parsed.value ?? 0n, gasPrice, parsed.gas);
 
   const raw = await gasAccount.signTransaction({
     to: parsed.to,
@@ -194,6 +198,10 @@ async function replaceStuckGasTransaction(settlement: Settlement, current: { raw
 }
 
 async function sendGasTransaction(jobId: string, transaction: { raw: Hex; hash: Hash }) {
+  const parsed = parseTransaction(transaction.raw);
+  if (parsed.type !== "legacy" || parsed.gasPrice === undefined || parsed.gas === undefined)
+    throw new Error("The persisted gas transaction cannot be checked against the gas wallet balance.");
+  await assertGasWalletCanCover(jobId, parsed.value ?? 0n, parsed.gasPrice, parsed.gas);
   await db.query("UPDATE job_settlement_gas_attempts SET broadcast_at=COALESCE(broadcast_at,now()) WHERE tx_hash=$1", [transaction.hash]);
   await db.query("UPDATE job_settlements SET gas_broadcast_at=COALESCE(gas_broadcast_at,now()),updated_at=now() WHERE job_id=$1", [jobId]);
   try { await publicClient.sendRawTransaction({ serializedTransaction: transaction.raw }); }
@@ -214,8 +222,9 @@ export async function processSettlement(jobId: string) {
     `UPDATE job_settlements SET lease_until=now()+interval '2 minutes',attempts=attempts+1,updated_at=now()
      WHERE job_id=$1 AND status='pending' AND (lease_until IS NULL OR lease_until<now()) RETURNING id,attempts`, [jobId]);
   if (!lease.rowCount) return;
-  if (Number(lease.rows[0].attempts) === 4)
-    void sendOpsAlert("settlement_attempts_exceeded", { jobId, attempts: Number(lease.rows[0].attempts) });
+  const attempt = Number(lease.rows[0].attempts);
+  if (attempt === 4)
+    void sendOpsAlert("settlement_attempts_exceeded", { jobId, attempts: attempt });
   try {
     let settlement = await load(jobId);
     if (!settlement) throw new Error("Settlement record is missing.");
@@ -242,12 +251,7 @@ export async function processSettlement(jobId: string) {
       try {
         await sponsorLock.query("SELECT pg_advisory_lock(73301823)");
         if (!settlement.gas_signed_tx) {
-          const balance = await publicClient.getBalance({ address: gasWalletAddress });
-          const required = gasWalletRequiredBalance(BigInt(config.GAS_WALLET_MIN_BALANCE_WEI), reserve, gasPrice, gasTopUpLimit!);
-          if (balance < required) {
-            await sendOpsAlert("gas_wallet_below_reserve", { jobId });
-            throw new Error("Gas wallet reserve is below the configured minimum. Settlement paused before sponsorship.");
-          }
+          await assertGasWalletCanCover(jobId, reserve, gasPrice, gasTopUpLimit!);
         }
         const gasTx = await ensureStageTx(settlement, "gas", {
           to: settlement.escrow_address, value: reserve, gas: gasTopUpLimit ?? 1n, gasPrice,
@@ -296,7 +300,8 @@ export async function processSettlement(jobId: string) {
     } catch (error) { await client.query("ROLLBACK"); throw error; }
     finally { client.release(); }
   } catch (error) {
-    await db.query("UPDATE job_settlements SET lease_until=NULL,error=$2,updated_at=now() WHERE job_id=$1", [jobId, String(error).slice(0, 2_000)]);
+    const retryDelay = settlementRetryDelaySeconds(attempt);
+    await db.query("UPDATE job_settlements SET lease_until=now()+($3::int*interval '1 second'),error=$2,updated_at=now() WHERE job_id=$1", [jobId, String(error).slice(0, 2_000), retryDelay]);
     throw error;
   }
 }

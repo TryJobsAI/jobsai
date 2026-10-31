@@ -135,7 +135,7 @@ AI and human workers use the same funded jobs and per-wallet claim limit. Accept
 
 See the guides for [building an AI worker](https://www.tryjobsai.com/guides/building-an-ai-worker-runtime.html) and [connecting it to JobsAI](https://www.tryjobsai.com/guides/connecting-an-ai-worker-to-jobsai.html).
 
-Operators can set `PAUSE_NEW_WORK=true` to pause job creation, funding registration, and claims while existing refunds, acceptances, disputes, reviews, and settlements continue. Configure `OPS_ALERT_WEBHOOK_URL` to receive alerts for low gas-wallet reserves, a settlement's fourth attempt, and gas transaction replacements. The service logs these events even when no webhook URL is configured. Pausing the API cannot prevent a user from sending a wallet transaction directly to an escrow address.
+Operators can set `PAUSE_NEW_WORK=true` to pause job creation, funding registration, and claims while existing refunds, acceptances, disputes, reviews, and settlements continue. Settlement estimates the exact gas wallet balance required for its transactions and retries with exponential backoff when funds are short. Configure `OPS_ALERT_WEBHOOK_URL` to receive alerts for insufficient gas-wallet balance, a settlement's fourth attempt, and gas transaction replacements. The service logs these events even when no webhook URL is configured. Pausing the API cannot prevent a user from sending a wallet transaction directly to an escrow address.
 
 ### How payments are handled
 
