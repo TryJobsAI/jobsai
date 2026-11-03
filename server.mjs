@@ -9,7 +9,7 @@ function readRequestBody(req,limit=256*1024){return new Promise((resolve,reject)
 http.createServer(async(req,res)=>{
   try {
     const requestedPath=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
-    const path=({'/whitepaper':'/whitepaper.html','/roadmap':'/roadmap.html'})[requestedPath]||requestedPath;
+    const path=({'/whitepaper':'/whitepaper.html','/roadmap':'/roadmap.html','/admin':'/admin.html'})[requestedPath]||requestedPath;
     if(path.startsWith('/api/jobsai/')){
       const headers=new Headers();for(const name of ['accept','authorization','cookie','content-type','content-length']){const value=req.headers[name];if(typeof value==='string')headers.set(name,value);}
       let body;if(!['GET','HEAD'].includes(req.method||'GET')){const apiPath=new URL(req.url,'http://localhost').pathname;const uploadPath=apiPath==='/api/jobsai/v1/media/images';const speechPath=apiPath==='/api/jobsai/v1/speech/transcribe';const sourcePath=/^\/api\/jobsai\/v1\/(?:jobs|buyer\/jobs)\/[0-9a-f-]+\/source-file$/i.test(apiPath);body=await readRequestBody(req,uploadPath?5*1024*1024:speechPath?4*1024*1024:sourcePath?12*1024*1024:256*1024);}

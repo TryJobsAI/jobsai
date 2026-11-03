@@ -5,7 +5,7 @@ import { requireAuth } from "./auth.js";
 import { config } from "./config.js";
 import { db } from "./db/index.js";
 import { ApiError, asyncRoute } from "./http.js";
-import { requireMaster } from "./master-auth.js";
+import { requireAdmin } from "./admin.js";
 import { parseJobAmount } from "./job-input.js";
 import { rateLimit, requestIdentity } from "./rate-limit.js";
 
@@ -140,10 +140,10 @@ workerProfilesRouter.get("/:slug", asyncRoute(async (request, response) => {
   response.json({ data: { ...publicFields(profile), ...(await workStats(profile.user_id)) } });
 }));
 
-workerApplicationsAdminRouter.use(requireMaster);
+workerApplicationsAdminRouter.use(requireAdmin);
 workerApplicationsAdminRouter.get("/", asyncRoute(async (_request, response) => {
   const result = await db.query<ProfileRow>(
-    "SELECT * FROM worker_profiles WHERE status IN ('pending_review','changes_requested') ORDER BY submitted_at ASC LIMIT 200",
+    "SELECT wp.*,u.user_tag FROM worker_profiles wp JOIN users u ON u.id=wp.user_id WHERE wp.status IN ('pending_review','changes_requested') ORDER BY wp.submitted_at ASC LIMIT 200",
   );
   response.json({ data: result.rows.map((profile) => ({
     ...publicFields(profile), email: profile.email, phone: profile.phone,

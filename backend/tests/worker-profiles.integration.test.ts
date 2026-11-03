@@ -7,18 +7,21 @@ const dbTest = enabled ? test : test.skip;
 dbTest("worker profiles require review, publish safely, expose completed work metrics, and invalidate approval on edits", async () => {
   const databaseUrl = new URL(process.env.DATABASE_URL!);
   if (!databaseUrl.pathname.toLowerCase().includes("test")) throw new Error("Worker profile integration test needs a disposable database with 'test' in its name.");
-  if (!process.env.MASTER_PASSWORD || process.env.MASTER_PASSWORD.length < 32) throw new Error("Set a 32-character MASTER_PASSWORD for the worker profile integration test.");
   const [{ app }, { db }, { migrate }, { hashSessionToken }] = await Promise.all([
     import("../src/app.js"), import("../src/db/index.js"), import("../src/db/migrate.js"), import("../src/auth.js"),
   ]);
   await migrate();
   const workerWallet = `0x${randomBytes(20).toString("hex")}`;
   const clientWallet = `0x${randomBytes(20).toString("hex")}`;
+  const workerTag = `reviewadmin-${randomBytes(3).toString("hex")}`;
+  const clientTag = `reviewclient-${randomBytes(3).toString("hex")}`;
   const workerToken = randomBytes(32).toString("base64url");
   const outsiderToken = randomBytes(32).toString("base64url");
   const users = await db.query<{ id: string }>("INSERT INTO users(wallet_address) VALUES($1),($2) RETURNING id", [workerWallet, clientWallet]);
   const workerId = users.rows[0].id;
   const clientId = users.rows[1].id;
+  await db.query("UPDATE users SET is_admin=true,user_tag=$2 WHERE id=$1", [workerId, workerTag]);
+  await db.query("UPDATE users SET user_tag=$2 WHERE id=$1", [clientId, clientTag]);
   await db.query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '1 day'),($3,$4,now()+interval '1 day')", [hashSessionToken(workerToken),workerId,hashSessionToken(outsiderToken),clientId]);
   const claimedAt = new Date(Date.now() - 60_000);
   const completed = await db.query<{ id: string }>(
@@ -68,23 +71,28 @@ dbTest("worker profiles require review, publish safely, expose completed work me
     expect(profile).toMatchObject({ fullName: "Morgan Worker", status: "pending_review", publicProfile: true, completedJobs: 1, medianFirstDeliverySeconds: 12 });
     expect(profile.rateTiers).toHaveLength(2);
     expect((await call(`/v1/workers/${profile.slug}`)).status).toBe(404);
-    expect((await call("/v1/master/worker-applications")).status).toBe(401);
-    expect((await call("/v1/master/login", { method: "POST", body: { password: "incorrect-password" } })).status).toBe(401);
+    expect((await call("/v1/admin/worker-applications")).status).toBe(401);
+    expect((await call("/v1/admin/me", { token: workerToken })).body.data).toMatchObject({ isAdmin: true, userTag: workerTag });
+    expect((await call("/v1/admin/me", { token: outsiderToken })).body.data.isAdmin).toBe(false);
+    expect((await call("/v1/admin/worker-applications", { token: outsiderToken })).status).toBe(403);
 
-    const login = await call("/v1/master/login", { method: "POST", body: { password: process.env.MASTER_PASSWORD } });
-    expect(login.status).toBe(200);
-    expect(login.cookie).toContain("jobsai_master_session=");
-    const masterCookie = login.cookie!.split(";")[0];
-    const queue = await call("/v1/master/worker-applications", { cookie: masterCookie });
+    const addedAdmin = await call("/v1/admin/users", { token: workerToken, method: "POST", body: { userTag: clientTag } });
+    expect(addedAdmin.status).toBe(201);
+    expect((await call("/v1/admin/me", { token: outsiderToken })).body.data.isAdmin).toBe(true);
+    expect((await call("/v1/admin/users", { token: workerToken })).body.data).toEqual(expect.arrayContaining([expect.objectContaining({ userTag: clientTag })]));
+    expect((await call(`/v1/admin/users/${clientTag}`, { token: workerToken, method: "DELETE" })).status).toBe(204);
+    expect((await call("/v1/admin/me", { token: outsiderToken })).body.data.isAdmin).toBe(false);
+
+    const queue = await call("/v1/admin/worker-applications", { token: workerToken });
     expect(queue.status).toBe(200);
     expect(queue.body.data[0]).toMatchObject({ id: profile.id, email: application.email, phone: application.phone });
 
-    const changes = await call(`/v1/master/worker-applications/${profile.id}/review`, { cookie: masterCookie, method: "POST", body: { decision: "changes_requested", note: "Clarify your listed work hours." } });
+    const changes = await call(`/v1/admin/worker-applications/${profile.id}/review`, { token: workerToken, method: "POST", body: { decision: "changes_requested", note: "Clarify your listed work hours." } });
     expect(changes.status).toBe(200);
     expect((await call(`/v1/workers/${profile.slug}`)).status).toBe(404);
     const resubmitted = await call("/v1/workers/me", { token: workerToken, method: "PUT", body: application });
     expect(resubmitted.body.data.status).toBe("pending_review");
-    const approved = await call(`/v1/master/worker-applications/${profile.id}/review`, { cookie: masterCookie, method: "POST", body: { decision: "approved" } });
+    const approved = await call(`/v1/admin/worker-applications/${profile.id}/review`, { token: workerToken, method: "POST", body: { decision: "approved" } });
     expect(approved.status).toBe(200);
 
     const publicProfile = await call(`/v1/workers/${profile.slug}`);
@@ -97,7 +105,7 @@ dbTest("worker profiles require review, publish safely, expose completed work me
     const edited = await call("/v1/workers/me", { token: workerToken, method: "PUT", body: { ...application, country: "Kenya" } });
     expect(edited.body.data.status).toBe("pending_review");
     expect((await call(`/v1/workers/${profile.slug}`)).status).toBe(404);
-    expect((await call(`/v1/master/worker-applications/${profile.id}/review`, { cookie: masterCookie, method: "POST", body: { decision: "approved" } })).status).toBe(200);
+    expect((await call(`/v1/admin/worker-applications/${profile.id}/review`, { token: workerToken, method: "POST", body: { decision: "approved" } })).status).toBe(200);
   } finally {
     server.close();
     await db.query("DELETE FROM worker_profile_reviews WHERE profile_id IN (SELECT id FROM worker_profiles WHERE user_id=$1)", [workerId]);

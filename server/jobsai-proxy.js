@@ -23,12 +23,12 @@ function json(status, code, message) {
 
 export async function proxyJobsAI(request) {
   const method = request.method.toUpperCase();
-  if (!["GET", "POST", "PUT", "PATCH"].includes(method)) return json(405, "method_not_allowed", "This method is not available.");
+  if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method)) return json(405, "method_not_allowed", "This method is not available.");
 
   const incoming = new URL(request.url);
   if (!incoming.pathname.startsWith(`${API_PREFIX}/`)) return json(404, "not_found", "This endpoint does not exist.");
   const apiPath = incoming.pathname.slice(API_PREFIX.length);
-  if (!(AUTH_ROUTES.has(apiPath) || apiPath === "/v1/jobs" || apiPath.startsWith("/v1/jobs/") || apiPath === "/v1/services" || apiPath.startsWith("/v1/services/") || apiPath.startsWith("/v1/team/") || apiPath.startsWith("/v1/workers/") || apiPath.startsWith("/v1/master/") || apiPath.startsWith("/v1/buyer/") || apiPath === "/v1/media/images" || apiPath === "/v1/speech/transcribe"))
+  if (!(AUTH_ROUTES.has(apiPath) || apiPath === "/v1/jobs" || apiPath.startsWith("/v1/jobs/") || apiPath === "/v1/services" || apiPath.startsWith("/v1/services/") || apiPath.startsWith("/v1/team/") || apiPath.startsWith("/v1/workers/") || apiPath.startsWith("/v1/user-tags/") || apiPath.startsWith("/v1/admin/") || apiPath.startsWith("/v1/buyer/") || apiPath === "/v1/media/images" || apiPath === "/v1/speech/transcribe"))
     return json(404, "not_found", "This endpoint does not exist.");
 
   if (apiPath === "/v1/media/images" && (method !== "POST" || !IMAGE_CONTENT_TYPES.has((request.headers.get("content-type") || "").split(";")[0].trim().toLowerCase())))
@@ -59,7 +59,7 @@ export async function proxyJobsAI(request) {
   const cookie = request.headers.get("cookie");
   const contentType = request.headers.get("content-type");
   if (authorization) headers.set("authorization", authorization);
-  if (cookie && (apiPath.startsWith("/v1/team/") || apiPath.startsWith("/v1/master/"))) headers.set("cookie", cookie);
+  if (cookie && apiPath.startsWith("/v1/team/")) headers.set("cookie", cookie);
   if (contentType && method !== "GET") headers.set("content-type", contentType);
 
   try {
@@ -71,7 +71,7 @@ export async function proxyJobsAI(request) {
     const retryAfter = upstream.headers.get("retry-after");
     if (retryAfter) responseHeaders.set("Retry-After", retryAfter);
     const setCookie = upstream.headers.get("set-cookie");
-    if (setCookie && (apiPath.startsWith("/v1/team/") || apiPath.startsWith("/v1/master/"))) responseHeaders.set("Set-Cookie", setCookie);
+    if (setCookie && apiPath.startsWith("/v1/team/")) responseHeaders.set("Set-Cookie", setCookie);
     return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
   } catch {
     return json(502, "jobsai_api_unavailable", "JobsAI could not reach the API. Please try again.");

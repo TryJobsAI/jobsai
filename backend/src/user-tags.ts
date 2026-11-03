@@ -7,9 +7,11 @@ import { rateLimit, requestIdentity } from "./rate-limit.js";
 
 export const userTagsRouter = Router();
 
-export const userTagSchema = z.string().trim().toLowerCase()
-  .regex(/^[a-z0-9][a-z0-9_-]{2,23}$/, "Use 3–24 lowercase letters, numbers, underscores, or hyphens.")
-  .refine((tag) => !new Set(["admin", "api", "buyer", "jobs", "jobsai", "profile", "support", "team", "worker"]).has(tag), {
+export const userTagLookupSchema = z.string().trim().toLowerCase()
+  .regex(/^[a-z0-9][a-z0-9_-]{2,23}$/, "Use 3–24 lowercase letters, numbers, underscores, or hyphens.");
+
+export const userTagSchema = userTagLookupSchema
+  .refine((tag) => !new Set(["admin", "adminmachine", "api", "buyer", "jobs", "jobsai", "profile", "support", "team", "worker"]).has(tag), {
     message: "That usertag is reserved.",
   });
 
@@ -49,7 +51,7 @@ userTagsRouter.put("/me", requireAuth, rateLimit([
 }));
 
 userTagsRouter.get("/:tag", asyncRoute(async (request, response) => {
-  const userTag = userTagSchema.parse(request.params.tag);
+  const userTag = userTagLookupSchema.parse(request.params.tag);
   const result = await db.query<{ user_tag: string; worker_profile_slug: string | null }>(
     `SELECT u.user_tag,wp.slug AS worker_profile_slug
        FROM users u LEFT JOIN worker_profiles wp ON wp.user_id=u.id AND wp.status='approved' AND wp.public_profile

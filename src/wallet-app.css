@@ -69,3 +69,10 @@ dialog.workspace-modal{position:fixed;inset:0;margin:auto;max-height:calc(100% -
 .buyer-api-settings a{color:#075fe9;font-weight:650}
 [data-panel="settings"]>.workspace-title{margin-bottom:24px}
 @media(max-width:650px){.worker-profile-stats{grid-template-columns:1fr}.worker-profile-heading-actions{justify-content:flex-start}.worker-profile-panel>.created-jobs-heading{display:grid;gap:14px}.buyer-api-settings>.created-jobs-card{padding:20px}.buyer-api-settings .buyer-api-current{align-items:flex-start}.buyer-api-settings .buyer-api-actions{width:100%}.buyer-api-settings .buyer-api-actions .pill{flex:1;justify-content:center}}
+#admin-nav-root{display:contents}
+.workspace-primary-nav>[data-admin-nav]{display:flex;align-items:center;gap:12px;width:100%;padding:12px;border:0;border-radius:10px;background:transparent;color:#344054;font:inherit;font-size:13px;text-align:left;text-decoration:none;cursor:pointer}
+.workspace-primary-nav>[data-admin-nav]:hover{background:#eaf1ff;color:#1556d9}
+.workspace-primary-nav>[data-admin-nav]>span{display:grid;place-items:center;flex:none;width:20px;font-size:17px}
+.worker-admin-header nav{display:flex;align-items:center;gap:18px}
+.worker-admin-header nav>a{color:#175bd6;font-size:13px;font-weight:650;text-decoration:none}
+.worker-admin-header nav>a:hover{text-decoration:underline}

@@ -30,7 +30,6 @@ const env = z
     DATA_ENCRYPTION_KEY: z.string().min(32),
     TEAM_WALLET_ADDRESSES: z.string().default(""),
     JOBSAI_TEAM_PASSWORD: optionalString,
-    MASTER_PASSWORD: optionalString,
     GAS_WALLET_PRIVATE_KEY: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
     GAS_TX_REPLACEMENT_AFTER_SECONDS: z.coerce.number().int().min(60).max(86_400).default(600),
     CRON_SECRET: z.string().min(32),

@@ -1211,6 +1211,7 @@ function WorkspaceContext() {
   const { address, chainId, isConnected, isReconnecting } = useAccount();
   const { disconnectAsync } = useDisconnect();
   const [session, setSession] = useState(readSession);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [identity, setIdentity] = useState({ status: 'loading', userTag: null });
   const [identityRetry, setIdentityRetry] = useState(0);
   const header = document.getElementById('wallet-header-root');
@@ -1221,6 +1222,16 @@ function WorkspaceContext() {
   const servicesCatalogRoot = document.getElementById('services-catalog-root');
   const profileRoot = document.getElementById('profile-root');
   const buyerApiSettingsRoot = document.getElementById('buyer-api-settings-root');
+  const adminNavRoot = document.getElementById('admin-nav-root');
+
+  useEffect(() => {
+    if (!session?.token) { setIsAdmin(false); return; }
+    let active = true;
+    JobsAIAPI.adminStatus(session.token).then(result => {
+      if (active) setIsAdmin(Boolean(result?.data?.isAdmin));
+    }).catch(() => { if (active) setIsAdmin(false); });
+    return () => { active = false; };
+  }, [session?.token]);
 
   useEffect(() => {
     if (!session?.token) { goToAuth(); return; }
@@ -1251,7 +1262,7 @@ function WorkspaceContext() {
     goToAuth();
   }
 
-  if (!header || !jobsRoot || !workRoot || !createJobRoot || !agentsRoot || !servicesCatalogRoot || !profileRoot || !buyerApiSettingsRoot || !session?.token) return null;
+  if (!header || !jobsRoot || !workRoot || !createJobRoot || !agentsRoot || !servicesCatalogRoot || !profileRoot || !buyerApiSettingsRoot || !adminNavRoot || !session?.token) return null;
   return <>
     {createPortal(<><ConnectButton.Custom>{({ account, openAccountModal, mounted }) => <><a className="workspace-header-usertag" href={identity.userTag ? `worker.html?tag=${encodeURIComponent(identity.userTag)}` : undefined} aria-label={identity.userTag ? `Open @${identity.userTag} profile` : undefined}>{identity.userTag ? `@${identity.userTag}` : null}</a><button className="workspace-account-button" onClick={openAccountModal} disabled={!mounted || !account} aria-label={`Connected wallet ${account?.displayName || ''}`}><span className="workspace-account-status" />{account?.displayName || 'Connected wallet'}</button></>}</ConnectButton.Custom><button className="workspace-signout" onClick={signOut}>Sign out</button></>, header)}
     {createPortal(<FundedJobs session={session} />, jobsRoot)}
@@ -1261,6 +1272,7 @@ function WorkspaceContext() {
     {createPortal(<ServicesPanel session={session} view="catalog" />, servicesCatalogRoot)}
     {createPortal(<ProfileWorkspace session={session} userTag={identity.userTag} />, profileRoot)}
     {createPortal(<BuyerApiSettings session={session} />, buyerApiSettingsRoot)}
+    {isAdmin && createPortal(<a href="/admin" data-admin-nav><span>⚙</span> Admin</a>, adminNavRoot)}
     {createPortal(<UserTagSetup session={session} identity={identity} onSet={userTag => setIdentity({ status: 'ready', userTag })} onRetry={() => setIdentityRetry(value => value + 1)} />, document.body)}
   </>;
 }

@@ -6,7 +6,7 @@ test("user tags normalize and accept public identity characters", () => {
 });
 
 test("user tags reject short, malformed, and reserved names", () => {
-  for (const value of ["ab", "-name", "two words", "admin", "JobsAI"]) {
+  for (const value of ["ab", "-name", "two words", "admin", "adminmachine", "JobsAI"]) {
     expect(userTagSchema.safeParse(value).success).toBe(false);
   }
 });

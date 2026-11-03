@@ -8,6 +8,10 @@
       "destination": "/whitepaper.html"
     },
     {
+      "source": "/admin",
+      "destination": "/admin.html"
+    },
+    {
       "source": "/roadmap",
       "destination": "/roadmap.html"
     },
@@ -48,8 +52,8 @@
       "destination": "https://jobsai-api.onrender.com/v1/user-tags/:path*"
     },
     {
-      "source": "/api/jobsai/v1/master/:path*",
-      "destination": "https://jobsai-api.onrender.com/v1/master/:path*"
+      "source": "/api/jobsai/v1/admin/:path*",
+      "destination": "https://jobsai-api.onrender.com/v1/admin/:path*"
     },
     {
       "source": "/api/jobsai/v1/buyer/:path*",
