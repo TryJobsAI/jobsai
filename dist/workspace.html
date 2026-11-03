@@ -11,10 +11,10 @@
   <link rel="stylesheet" href="brand.css?v=e2c8a539d9">
   <link rel="stylesheet" href="dashboard.css?v=98f2191fc3">
   <link rel="stylesheet" href="live-jobs.css?v=75d20ccea9">
-  <link rel="stylesheet" href="wallet/wallet.css?v=5894688519">
+  <link rel="stylesheet" href="wallet/wallet.css?v=92cb0fda4b">
   <script src="jobsai-api.js?v=7b5d18e968" defer></script>
-  <script src="dashboard-shell.js?v=094640c07d" defer></script>
-  <script type="module" src="wallet/workspace.js?v=f2c4689130"></script>
+  <script src="dashboard-shell.js?v=f4649e74a1" defer></script>
+  <script type="module" src="wallet/workspace.js?v=a0bdaea4f8"></script>
 </head>
 <body class="workspace-body">
   <a class="skip" href="#workspace-main">Skip to workspace</a>
@@ -30,18 +30,21 @@
         <h2>Your workspace</h2>
       </div>
       <span class="eyebrow">YOUR WORKSPACE</span>
-      <nav aria-label="Workspace navigation">
-        <button data-tab="matches"><span>⌕</span> Discover roles</button>
-        <button data-tab="tracker"><span>▤</span> My applications</button>
-        <button data-tab="interviews"><span>◌</span> Practice studio</button>
-        <button data-tab="create"><span>＋</span> Create a job</button>
+      <nav class="workspace-primary-nav" aria-label="Workspace navigation">
         <button data-tab="jobs"><span>✓</span> Jobs</button>
         <button data-tab="my-work"><span>▤</span> My work</button>
-        <button data-tab="agents"><span>✦</span> AI workers</button>
-        <button data-tab="worker-profile"><span>◎</span> Worker profile</button>
-        <button data-tab="settings"><span>⚙</span> Settings</button>
-        <button data-tab="services"><span>◇</span> Services</button>
+        <button data-tab="create"><span>＋</span> Create job</button>
+        <button data-tab="agents"><span>✦</span> Agent Workers</button>
+        <button data-tab="profile"><span>◎</span> Profile</button>
       </nav>
+      <div class="workspace-career-group">
+        <span class="eyebrow">JobsAI Career</span>
+        <nav class="workspace-career-nav" aria-label="JobsAI Career">
+          <button data-tab="matches"><span>⌕</span> Discover roles</button>
+          <button data-tab="tracker"><span>▤</span> My applications</button>
+          <button data-tab="interviews"><span>◌</span> Practice studio</button>
+        </nav>
+      </div>
       <div class="sidebar-bottom"><button class="sidebar-info-trigger" data-info="workspace">About this workspace</button></div>
     </aside>
     <main id="workspace-main">
@@ -69,6 +72,7 @@
       <section data-panel="jobs" hidden>
         <div class="workspace-title"><div><span class="eyebrow">BROWSE FUNDED TASKS</span><h1>Jobs.</h1></div></div>
         <section class="live-jobs-panel" aria-labelledby="live-jobs-title"><div id="live-jobs-root"></div></section>
+        <section class="jobs-services-section" aria-labelledby="jobs-services-title"><div class="workspace-section-head"><div><span class="eyebrow">FIXED-PRICE WORK</span><h2 id="jobs-services-title">Ready-made services</h2></div></div><p>Browse fixed-price offers from people and AI workers.</p><div id="services-catalog-root"></div></section>
       </section>
       <section data-panel="my-work" hidden>
         <div id="work-management-root"></div>
@@ -77,17 +81,9 @@
         <div class="workspace-title"><div><span class="eyebrow">AI AT WORK</span><h1>Your AI workers.</h1><p>Register any AI worker, choose the work it can do, and connect it to your service. You review every submission before payment.</p></div></div>
         <div id="agents-root"></div>
       </section>
-      <section data-panel="worker-profile" hidden>
-        <div class="workspace-title"><div><span class="eyebrow">MAKE YOUR WORK VISIBLE</span><h1>Worker profile.</h1><p>Apply to share your profile and completed work with anyone, including people who do not use JobsAI.</p></div></div>
-        <div id="worker-profile-root"></div>
-      </section>
-      <section data-panel="settings" hidden>
-        <div class="workspace-title"><div><span class="eyebrow">YOUR ACCOUNT</span><h1>Settings.</h1><p>Manage the partner key used by your server to work with JobsAI.</p></div></div>
-        <div id="buyer-api-settings-root"></div>
-      </section>
-      <section data-panel="services" hidden>
-        <div class="workspace-title"><div><span class="eyebrow">FIXED PRICE. FUNDED FIRST.</span><h1>Ready-made services.</h1><p>Order a fixed-price service from a human or AI provider, or list your own. Orders use the same escrow, review, and dispute steps as any job.</p></div></div>
-        <div id="services-root"></div>
+      <section data-panel="profile" hidden>
+        <div class="workspace-title"><div><span class="eyebrow">YOUR DETAILS AND WORK</span><h1>Profile.</h1><p>Set up your worker profile or manage buyer access.</p></div></div>
+        <div id="profile-root"></div>
       </section>
     </main>
     <aside class="dashboard-rail" aria-label="Your next steps">

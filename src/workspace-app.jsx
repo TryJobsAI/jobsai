@@ -940,7 +940,7 @@ const serviceCategoryOptions = [['writing', 'Writing'], ['image_generation', 'Im
 const serviceCategoryLabel = value => serviceCategoryOptions.find(([category]) => category === value)?.[1] || value;
 const emptyServiceForm = { name: '', summary: '', description: '', category: 'writing', criteria: '', asset: 'eth', amount: '', deliveryDays: '3', agentId: '' };
 
-function ServicesPanel({ session }) {
+function ServicesPanel({ session, view = 'catalog' }) {
   const [catalog, setCatalog] = useState([]);
   const [mine, setMine] = useState([]);
   const [agents, setAgents] = useState([]);
@@ -970,12 +970,7 @@ function ServicesPanel({ session }) {
     }
   }
 
-  useEffect(() => {
-    const open = () => { if (!loaded) load(); };
-    document.addEventListener('jobsai:open-services', open);
-    if (new URLSearchParams(location.search).get('tab') === 'services') open();
-    return () => document.removeEventListener('jobsai:open-services', open);
-  }, [loaded, session.token]);
+  useEffect(() => { load(); }, [session.token]);
 
   async function createService(event) {
     event.preventDefault();
@@ -1015,12 +1010,13 @@ function ServicesPanel({ session }) {
     } finally { setBusy(false); }
   }
 
-  return <section className="services-panel">
-    <div className="services-toolbar">
+  const offersView = view === 'offers';
+  return <section className={`services-panel ${offersView ? 'services-offers-view' : 'services-catalog-view'}`}>
+    {offersView && <div className="created-jobs-heading"><div><span className="eyebrow">YOUR SERVICES</span><h2>Services you offer</h2><p>Add fixed-price work to your profile. You can pause a listing whenever it is unavailable.</p></div><button className="pill primary" onClick={() => setShowForm(value => !value)}>{showForm ? 'Close form' : 'Add a service'}</button></div>}
+    {!offersView && <div className="services-toolbar">
       <label>Category<select value={category} onChange={event => { setCategory(event.target.value); load(event.target.value); }}><option value="">All categories</option>{serviceCategoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      <button className="pill primary" onClick={() => setShowForm(value => !value)}>{showForm ? 'Close form' : 'Offer a service'}</button>
-    </div>
-    {showForm && <form className="create-job-form service-form" noValidate onSubmit={createService}>
+    </div>}
+    {offersView && showForm && <form className="create-job-form service-form" noValidate onSubmit={createService}>
       <div className="create-job-form-heading"><span className="eyebrow">YOUR SERVICE</span><h2>Sell a fixed-price service.</h2><p>Clients order it at this price and fund escrow before work starts. Paid orders arrive already assigned to you, with a deadline set by your delivery time.</p></div>
       <label>Service name<input required minLength="3" maxLength="80" value={form.name} onChange={update('name')} placeholder="Blog post rewrite" /></label>
       <label>One-line summary<input required maxLength="200" value={form.summary} onChange={update('summary')} placeholder="I rewrite one blog post up to 1,500 words for clarity." /></label>
@@ -1031,17 +1027,18 @@ function ServicesPanel({ session }) {
       <label>Fulfilled by<select value={form.agentId} onChange={update('agentId')}><option value="">Me (human)</option>{agents.map(agent => <option key={agent.id} value={agent.id}>AI worker · {agent.name}</option>)}</select></label>
       <button className="pill primary" type="submit" disabled={busy}>List service</button>
     </form>}
-    <div className="services-grid">{catalog.map(service => <article className="service-card" key={service.id}>
+    {!offersView && <div className="services-grid">{catalog.map(service => <article className="service-card" key={service.id}>
       <div className="service-card-top"><span className="agent-work-badge">{service.agent ? `AI worker · ${service.agent.name}` : 'Human provider'}</span><span className="service-category">{serviceCategoryLabel(service.category)}</span></div>
       <h3>{service.name}</h3><p>{service.summary}</p>
       <dl><div><dt>Price</dt><dd>{service.amount} {service.asset}</dd></div><div><dt>Delivery</dt><dd>{service.deliveryDays} {service.deliveryDays === 1 ? 'day' : 'days'}</dd></div><div><dt>Completed</dt><dd>{service.completedJobs}</dd></div></dl>
       <button className="pill outline" onClick={() => { setOrdering(service); setOrderDetails(''); }}>View and order</button>
-    </article>)}</div>
-    {loaded && !catalog.length && <p className="created-jobs-empty">No services are listed in this category yet. Offer the first one.</p>}
-    {mine.length > 0 && <section className="created-jobs-card services-mine"><div className="created-jobs-heading"><div><span className="eyebrow">YOUR LISTINGS</span><h2>My services</h2></div></div>
+    </article>)}</div>}
+    {loaded && !offersView && !catalog.length && <p className="created-jobs-empty">No services are listed in this category yet.</p>}
+    {offersView && loaded && !mine.length && <div className="created-jobs-empty"><h3>No services listed yet</h3><p>Add a fixed-price service to show clients what work you offer.</p></div>}
+    {offersView && mine.length > 0 && <section className="created-jobs-card services-mine"><div className="created-jobs-heading"><div><span className="eyebrow">YOUR LISTINGS</span><h2>My services</h2></div></div>
       <div className="created-jobs-list">{mine.map(service => <article className="created-job-item" key={service.id}><div className="created-job-summary"><h3>{service.name}</h3><strong>{service.amount} {service.asset}</strong></div><p>{service.active ? 'Listed' : 'Paused'} · {service.completedJobs} completed · {service.agent ? `AI worker · ${service.agent.name}` : 'Fulfilled by you'}</p><button className="pill outline" onClick={() => toggle(service)} disabled={busy}>{service.active ? 'Pause listing' : 'List again'}</button></article>)}</div>
     </section>}
-    {ordering && <div className="workspace-overlay"><section className="workspace-modal workspace-information workflow-dialog" role="dialog" aria-modal="true" aria-labelledby="service-order-title">
+    {!offersView && ordering && <div className="workspace-overlay"><section className="workspace-modal workspace-information workflow-dialog" role="dialog" aria-modal="true" aria-labelledby="service-order-title">
       <span className="workspace-modal-symbol" aria-hidden="true">◇</span><h2 id="service-order-title">{ordering.name}</h2><p>{ordering.amount} {ordering.asset} · delivered in {ordering.deliveryDays} {ordering.deliveryDays === 1 ? 'day' : 'days'} · {ordering.agent ? `AI worker · ${ordering.agent.name}` : 'Human provider'}</p>
       <p>{ordering.description}</p><h3>Acceptance criteria</h3><ul>{ordering.acceptanceCriteria.map((item, index) => <li key={index}>{item}</li>)}</ul>
       <form onSubmit={order}><label>Your details <small>Optional</small><textarea rows="3" maxLength="5000" value={orderDetails} onChange={event => setOrderDetails(event.target.value)} placeholder="Links, files to use, or anything the provider needs to know." /></label>
@@ -1112,6 +1109,7 @@ function WorkerProfilePanel({ session }) {
       <label className="worker-public-toggle"><input type="checkbox" checked={form.publicProfile} onChange={event => change('publicProfile', event.target.checked)} /><span>Publish my profile and completed job history after JobsAI approves it</span></label>
       <button className="pill primary" type="submit" disabled={busy}>{busy ? 'Submitting…' : 'Submit profile for review'}</button>
     </form>
+    <ServicesPanel session={session} view="offers" />
     {feedback && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="worker-profile-feedback-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="worker-profile-feedback-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
   </section>;
 }
@@ -1164,6 +1162,20 @@ function BuyerApiSettings({ session }) {
   </section>;
 }
 
+function ProfileWorkspace({ session }) {
+  const [section, setSection] = useState('worker');
+  return <section className="profile-workspace">
+    <div className="profile-tabs" role="tablist" aria-label="Profile type">
+      <button type="button" role="tab" aria-selected={section === 'worker'} onClick={() => setSection('worker')}>Worker</button>
+      <button type="button" role="tab" aria-selected={section === 'buyer'} onClick={() => setSection('buyer')}>Buyer</button>
+    </div>
+    {section === 'worker' ? <WorkerProfilePanel session={session} /> : <section className="buyer-profile-coming-soon" role="tabpanel">
+      <span className="eyebrow">BUYER PROFILE</span><h2>Buyer profiles are coming soon.</h2><p>For now, you can manage your buyer API access below.</p>
+      <BuyerApiSettings session={session} />
+    </section>}
+  </section>;
+}
+
 function WorkspaceContext() {
   const { address, chainId, isConnected, isReconnecting } = useAccount();
   const { disconnectAsync } = useDisconnect();
@@ -1173,9 +1185,8 @@ function WorkspaceContext() {
   const workRoot = document.getElementById('work-management-root');
   const createJobRoot = document.getElementById('create-job-root');
   const agentsRoot = document.getElementById('agents-root');
-  const servicesRoot = document.getElementById('services-root');
-  const workerProfileRoot = document.getElementById('worker-profile-root');
-  const buyerApiSettingsRoot = document.getElementById('buyer-api-settings-root');
+  const servicesCatalogRoot = document.getElementById('services-catalog-root');
+  const profileRoot = document.getElementById('profile-root');
 
   useEffect(() => {
     if (!session?.token) { goToAuth(); return; }
@@ -1194,16 +1205,15 @@ function WorkspaceContext() {
     goToAuth();
   }
 
-  if (!header || !jobsRoot || !workRoot || !createJobRoot || !agentsRoot || !servicesRoot || !workerProfileRoot || !buyerApiSettingsRoot || !session?.token) return null;
+  if (!header || !jobsRoot || !workRoot || !createJobRoot || !agentsRoot || !servicesCatalogRoot || !profileRoot || !session?.token) return null;
   return <>
     {createPortal(<><ConnectButton.Custom>{({ account, openAccountModal, mounted }) => <button className="workspace-account-button" onClick={openAccountModal} disabled={!mounted || !account} aria-label={`Connected wallet ${account?.displayName || ''}`}><span className="workspace-account-status" />{account?.displayName || 'Connected wallet'}</button>}</ConnectButton.Custom><button className="workspace-signout" onClick={signOut}>Sign out</button></>, header)}
     {createPortal(<FundedJobs session={session} />, jobsRoot)}
     {createPortal(<MyWork session={session} walletAddress={address} />, workRoot)}
     {createPortal(<CreateJobPanel session={session} walletAddress={address} chainId={chainId} />, createJobRoot)}
     {createPortal(<AgentManagement session={session} />, agentsRoot)}
-    {createPortal(<ServicesPanel session={session} />, servicesRoot)}
-    {createPortal(<WorkerProfilePanel session={session} />, workerProfileRoot)}
-    {createPortal(<BuyerApiSettings session={session} />, buyerApiSettingsRoot)}
+    {createPortal(<ServicesPanel session={session} view="catalog" />, servicesCatalogRoot)}
+    {createPortal(<ProfileWorkspace session={session} />, profileRoot)}
   </>;
 }
 
