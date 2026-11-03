@@ -9,6 +9,8 @@ const AUTH_ROUTES = new Set([
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const IMAGE_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const MAX_SPEECH_AUDIO_BYTES = 4 * 1024 * 1024;
+const SPEECH_CONTENT_TYPES = new Set(["audio/ogg", "audio/webm"]);
 
 function json(status, code, message) {
   return Response.json({ error: { code, message } }, {
@@ -24,12 +26,14 @@ export async function proxyJobsAI(request) {
   const incoming = new URL(request.url);
   if (!incoming.pathname.startsWith(`${API_PREFIX}/`)) return json(404, "not_found", "This endpoint does not exist.");
   const apiPath = incoming.pathname.slice(API_PREFIX.length);
-  if (!(AUTH_ROUTES.has(apiPath) || apiPath === "/v1/jobs" || apiPath.startsWith("/v1/jobs/") || apiPath === "/v1/services" || apiPath.startsWith("/v1/services/") || apiPath.startsWith("/v1/team/") || apiPath === "/v1/media/images"))
+  if (!(AUTH_ROUTES.has(apiPath) || apiPath === "/v1/jobs" || apiPath.startsWith("/v1/jobs/") || apiPath === "/v1/services" || apiPath.startsWith("/v1/services/") || apiPath.startsWith("/v1/team/") || apiPath === "/v1/media/images" || apiPath === "/v1/speech/transcribe"))
     return json(404, "not_found", "This endpoint does not exist.");
 
   if (apiPath === "/v1/media/images" && (method !== "POST" || !IMAGE_CONTENT_TYPES.has((request.headers.get("content-type") || "").split(";")[0].trim().toLowerCase())))
     return json(415, "unsupported_image_type", "Upload a JPEG, PNG, WebP, or GIF image. Video files are not accepted.");
-  const maxBodyBytes = apiPath === "/v1/media/images" ? MAX_IMAGE_BYTES : MAX_BODY_BYTES;
+  if (apiPath === "/v1/speech/transcribe" && (method !== "POST" || !SPEECH_CONTENT_TYPES.has((request.headers.get("content-type") || "").split(";")[0].trim().toLowerCase())))
+    return json(415, "unsupported_audio_type", "Firefox voice typing supports OGG or WebM audio.");
+  const maxBodyBytes = apiPath === "/v1/media/images" ? MAX_IMAGE_BYTES : apiPath === "/v1/speech/transcribe" ? MAX_SPEECH_AUDIO_BYTES : MAX_BODY_BYTES;
   const declaredSize = Number(request.headers.get("content-length") || 0);
   if (declaredSize > maxBodyBytes) return json(413, "request_too_large", "The request is too large.");
   const body = method === "GET" ? undefined : await request.arrayBuffer();

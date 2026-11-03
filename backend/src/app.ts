@@ -13,6 +13,7 @@ import { rateLimit, requestIdentity } from "./rate-limit.js";
 import { agentRuntimeRouter, agentsRouter } from "./agents.js";
 import { proposalsRouter } from "./proposals.js";
 import { servicesRouter } from "./services.js";
+import { MAX_SPEECH_AUDIO_BYTES, transcribeSpeech } from "./speech.js";
 
 const app = express();
 app.set("trust proxy", config.TRUST_PROXY);
@@ -69,6 +70,20 @@ app.post(
     assertCanSubmit(job.rows[0], request.auth!.userId);
     const result = await uploadSubmissionImage(request.body, request.header("content-type")?.split(";")[0].trim().toLowerCase() || "", jobId);
     response.status(201).json({ data: result });
+  }),
+);
+app.post(
+  "/v1/speech/transcribe",
+  requireAuth,
+  rateLimit([
+    { scope: "speech-transcription-user", limit: 10, windowSeconds: 3_600, identity: requestIdentity.authenticatedUser },
+    { scope: "speech-transcription-ip", limit: 30, windowSeconds: 3_600, identity: requestIdentity.clientIp },
+  ]),
+  express.raw({ type: "*/*", limit: MAX_SPEECH_AUDIO_BYTES }),
+  asyncRoute(async (request, response) => {
+    if (!Buffer.isBuffer(request.body)) throw new ApiError(400, "audio_required", "Record a short voice brief before requesting a transcript.");
+    const result = await transcribeSpeech(request.body, request.header("content-type") || "");
+    response.json({ data: result });
   }),
 );
 app.use("/v1/jobs", proposalsRouter);

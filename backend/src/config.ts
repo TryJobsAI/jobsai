@@ -40,6 +40,7 @@ const env = z
     CLOUDINARY_CLOUD_NAME: optionalString,
     GROQ_API_KEY: optionalString,
     JOB_DRAFT_MODEL: z.string().min(1).default("llama-3.3-70b-versatile"),
+    GROQ_STT_MODEL: z.string().min(1).default("whisper-large-v3-turbo"),
   })
   .parse(process.env);
 

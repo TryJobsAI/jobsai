@@ -298,6 +298,10 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
   const [voiceDialog, setVoiceDialog] = useState(null);
   const [voiceListening, setVoiceListening] = useState(false);
   const speechRecognitionRef = useRef(null);
+  const firefoxRecorderRef = useRef(null);
+  const firefoxStreamRef = useRef(null);
+  const firefoxChunksRef = useRef([]);
+  const firefoxTimerRef = useRef(null);
   const voiceTranscriptRef = useRef('');
   const voiceErrorRef = useRef(false);
   const [codeRepo, setCodeRepo] = useState('');
@@ -322,16 +326,99 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
   const { sendTransactionAsync } = useSendTransaction();
   const { writeContractAsync } = useWriteContract();
 
-  useEffect(() => () => speechRecognitionRef.current?.abort(), []);
+  useEffect(() => () => {
+    speechRecognitionRef.current?.abort();
+    clearTimeout(firefoxTimerRef.current);
+    const recorder = firefoxRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.onstop = null;
+      recorder.onerror = null;
+      recorder.stop();
+    }
+    firefoxStreamRef.current?.getTracks().forEach(track => track.stop());
+  }, []);
 
   function stopVoiceCapture() {
+    if (firefoxRecorderRef.current?.state === 'recording') {
+      firefoxRecorderRef.current.stop();
+      return;
+    }
     speechRecognitionRef.current?.stop();
   }
 
+  async function startFirefoxVoiceCapture() {
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      setVoiceDialog({ kind: 'error', title: 'Voice recording is unavailable', message: 'This Firefox setup cannot record audio. Check microphone permissions or type your brief instead.' });
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      firefoxStreamRef.current = stream;
+      const mimeOptions = ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus', 'audio/ogg', 'audio/webm'];
+      const mimeType = mimeOptions.find(type => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      firefoxRecorderRef.current = recorder;
+      firefoxChunksRef.current = [];
+      voiceErrorRef.current = false;
+      recorder.ondataavailable = event => { if (event.data?.size) firefoxChunksRef.current.push(event.data); };
+      recorder.onerror = () => {
+        voiceErrorRef.current = true;
+        setVoiceDialog({ kind: 'error', title: 'Recording stopped', message: 'Firefox could not finish recording. Check your microphone and try again.' });
+      };
+      recorder.onstop = async () => {
+        clearTimeout(firefoxTimerRef.current);
+        firefoxRecorderRef.current = null;
+        firefoxStreamRef.current?.getTracks().forEach(track => track.stop());
+        firefoxStreamRef.current = null;
+        setVoiceListening(false);
+        if (voiceErrorRef.current) return;
+        const audio = new Blob(firefoxChunksRef.current, { type: recorder.mimeType || mimeType || 'audio/ogg' });
+        firefoxChunksRef.current = [];
+        if (!audio.size) {
+          setVoiceDialog({ kind: 'unavailable', title: 'No audio recorded', message: 'No audio was captured. Check your microphone and try again.' });
+          return;
+        }
+        if (audio.size > 4 * 1024 * 1024) {
+          setVoiceDialog({ kind: 'error', title: 'Recording is too large', message: 'Keep voice recordings under 4 MB. Record for less time and try again.' });
+          return;
+        }
+        setVoiceDialog({ kind: 'transcribing', title: 'Transcribing your brief', message: 'Turning your recording into text…' });
+        try {
+          const response = await JobsAIAPI.transcribeAudio(audio, session.token);
+          const transcript = response?.data?.transcript?.trim();
+          if (!transcript) throw new Error('No speech was detected. Please record again.');
+          voiceTranscriptRef.current = transcript;
+          setDescription(current => `${current}${current && !/\s$/.test(current) ? ' ' : ''}${transcript}`);
+          setVoiceDialog({ kind: 'done', title: 'Voice added to your brief', message: 'Review and edit the transcript in the job description before creating your job.' });
+        } catch (error) {
+          setVoiceDialog({ kind: 'error', title: 'Could not transcribe your recording', message: error.message || 'The speech service could not transcribe this recording. Please try again.' });
+        }
+      };
+      recorder.start(500);
+      setVoiceListening(true);
+      setVoiceDialog({ kind: 'recording', title: 'Recording your brief', message: 'Speak in English. Stop whenever you’re ready; recording ends after 60 seconds.' });
+      firefoxTimerRef.current = setTimeout(() => stopVoiceCapture(), 60_000);
+    } catch (error) {
+      firefoxStreamRef.current?.getTracks().forEach(track => track.stop());
+      firefoxStreamRef.current = null;
+      setVoiceListening(false);
+      setVoiceDialog({ kind: 'error', title: 'Could not access your microphone', message: error?.name === 'NotAllowedError' ? 'Allow microphone access for this site in Firefox, then try again.' : 'Check that a microphone is connected and try again.' });
+    }
+  }
+
+  function confirmFirefoxVoiceCapture() {
+    setVoiceDialog(null);
+    void startFirefoxVoiceCapture();
+  }
+
   function startVoiceCapture() {
+    if (/(Firefox|FxiOS)\//.test(navigator.userAgent)) {
+      setVoiceDialog({ kind: 'firefox-consent', title: 'Voice typing in Firefox', message: 'If you continue, your recording will be sent through JobsAI to Groq for English transcription. JobsAI does not save the recording. Groq may temporarily retain request data for up to 30 days for reliability and abuse monitoring unless Zero Data Retention is enabled for our account. The transcript is added to your brief for you to review.' });
+      return;
+    }
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setVoiceDialog({ kind: 'unavailable', title: 'Voice typing is unavailable', message: 'This browser does not support voice typing. Try a recent version of Chrome, Edge, or Safari, or type your brief instead.' });
+      setVoiceDialog({ kind: 'unavailable', title: 'Voice typing is unavailable', message: 'This browser does not support voice typing. Try your device’s built-in dictation or type your brief instead.' });
       return;
     }
     try {
@@ -577,7 +664,7 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
       </article>)}</div>
     </section>
     {feedback && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="create-job-modal-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="create-job-modal-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
-    {voiceDialog && <div className="workspace-overlay"><section className={`workspace-modal ${voiceDialog.kind === 'listening' ? 'loading' : voiceDialog.kind === 'done' ? 'success' : voiceDialog.kind === 'unavailable' ? 'info' : 'error'}`} role="dialog" aria-modal="true" aria-labelledby="voice-dialog-title"><span className="workspace-modal-symbol" aria-hidden="true">{voiceDialog.kind === 'listening' ? <i /> : voiceDialog.kind === 'done' ? '✓' : voiceDialog.kind === 'unavailable' ? 'i' : '!'}</span><h2 id="voice-dialog-title">{voiceDialog.title}</h2><p>{voiceDialog.message}</p>{voiceDialog.kind === 'listening' ? <button className="pill primary" onClick={stopVoiceCapture}>Stop recording</button> : <button className="pill primary" onClick={() => setVoiceDialog(null)}>Got it</button>}</section></div>}
+    {voiceDialog && <div className="workspace-overlay"><section className={`workspace-modal ${['listening', 'recording', 'transcribing'].includes(voiceDialog.kind) ? 'loading' : voiceDialog.kind === 'done' ? 'success' : voiceDialog.kind === 'unavailable' || voiceDialog.kind === 'firefox-consent' ? 'info' : 'error'}`} role="dialog" aria-modal="true" aria-labelledby="voice-dialog-title"><span className="workspace-modal-symbol" aria-hidden="true">{['listening', 'recording', 'transcribing'].includes(voiceDialog.kind) ? <i /> : voiceDialog.kind === 'done' ? '✓' : voiceDialog.kind === 'unavailable' || voiceDialog.kind === 'firefox-consent' ? 'i' : '!'}</span><h2 id="voice-dialog-title">{voiceDialog.title}</h2><p>{voiceDialog.message}</p>{voiceDialog.kind === 'firefox-consent' ? <div className="workflow-dialog-actions"><button className="pill outline" onClick={() => setVoiceDialog(null)}>Cancel</button><button className="pill primary" onClick={confirmFirefoxVoiceCapture}>Continue</button></div> : ['listening', 'recording'].includes(voiceDialog.kind) ? <button className="pill primary" onClick={stopVoiceCapture}>Stop recording</button> : voiceDialog.kind === 'transcribing' ? null : <button className="pill primary" onClick={() => setVoiceDialog(null)}>Got it</button>}</section></div>}
     <InformationDialog info={jobInfo} onClose={() => setJobInfo(null)} />
     {reviewing && <div className="workspace-overlay"><section className="workspace-modal workspace-information workflow-dialog proposals-dialog" role="dialog" aria-modal="true" aria-labelledby="proposals-dialog-title">
       <span className="workspace-modal-symbol" aria-hidden="true">✎</span><h2 id="proposals-dialog-title">Proposals</h2><p>{reviewing.job.title} · {reviewing.job.amount} {reviewing.job.asset}</p>

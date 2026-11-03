@@ -50,6 +50,10 @@
     {
       "source": "/api/jobsai/v1/media/:path*",
       "destination": "https://jobsai-api.onrender.com/v1/media/:path*"
+    },
+    {
+      "source": "/api/jobsai/v1/speech/:path*",
+      "destination": "https://jobsai-api.onrender.com/v1/speech/:path*"
     }
   ]
 }

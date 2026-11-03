@@ -77,5 +77,6 @@
     teamDispute: (jobId, token) => request(`/v1/team/disputes/${encodeURIComponent(jobId)}`, { token }),
     resolveTeamDispute: (jobId, outcome, note, token) => request(`/v1/team/disputes/${encodeURIComponent(jobId)}/resolve`, { method: 'POST', token, body: { outcome, note } }),
     uploadImage: async (file, jobId, token) => request(`/v1/media/images?jobId=${encodeURIComponent(jobId)}`, { method: 'POST', token, body: await file.arrayBuffer(), contentType: file.type }),
+    transcribeAudio: (blob, token) => request('/v1/speech/transcribe', { method: 'POST', token, body: blob, contentType: blob.type }),
   });
 })();
