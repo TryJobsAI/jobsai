@@ -76,6 +76,14 @@
       "destination": "https://jobsai-api.onrender.com/v1/activity/:path*"
     },
     {
+      "source": "/api/jobsai/v1/messages/conversations",
+      "destination": "https://jobsai-api.onrender.com/v1/messages/conversations"
+    },
+    {
+      "source": "/api/jobsai/v1/messages/conversations/:path*",
+      "destination": "https://jobsai-api.onrender.com/v1/messages/conversations/:path*"
+    },
+    {
       "source": "/api/jobsai/v1/admin/:path*",
       "destination": "https://jobsai-api.onrender.com/v1/admin/:path*"
     },

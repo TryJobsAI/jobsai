@@ -1,5 +1,5 @@
 (() => {
-  const tabs = ['activity', 'jobs', 'my-work', 'create', 'agents', 'profile', 'settings', 'matches', 'tracker', 'interviews'];
+  const tabs = ['activity', 'messages', 'jobs', 'my-work', 'create', 'agents', 'profile', 'settings', 'matches', 'tracker', 'interviews'];
   const panels = [...document.querySelectorAll('[data-panel]')];
   const buttons = [...document.querySelectorAll('[data-tab]')];
   const infoDialog = document.querySelector('#workspace-info');

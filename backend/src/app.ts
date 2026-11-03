@@ -22,6 +22,7 @@ import { workerApplicationsAdminRouter, workerProfilesRouter } from "./worker-pr
 import { buyerJobsRouter, buyerKeysRouter } from "./buyer-api.js";
 import { userTagsRouter } from "./user-tags.js";
 import { activityRouter } from "./activity.js";
+import { messagesRouter } from "./messages.js";
 
 const app = express();
 app.set("trust proxy", config.TRUST_PROXY);
@@ -135,6 +136,7 @@ app.use("/v1/team", teamJobsRouter);
 app.use("/v1/workers", workerProfilesRouter);
 app.use("/v1/user-tags", userTagsRouter);
 app.use("/v1/activity", activityRouter);
+app.use("/v1/messages", messagesRouter);
 app.use("/v1/admin", adminRouter);
 app.use("/v1/admin/worker-applications", workerApplicationsAdminRouter);
 app.use("/v1/buyer/keys", buyerKeysRouter);

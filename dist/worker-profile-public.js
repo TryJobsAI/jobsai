@@ -52,6 +52,13 @@
       const detail = el('div'); detail.append(el('dt', label), el('dd', value)); details.append(detail);
     }
     content.append(profileRow, details);
+    if (userTag) {
+      const actions = el('div', undefined, 'worker-public-message-actions');
+      const message = el('a', 'Message this worker', 'pill primary');
+      message.href = `workspace.html?tab=messages&to=${encodeURIComponent(userTag)}&role=buyer`;
+      actions.append(message);
+      content.append(actions);
+    }
     const stats = el('div', undefined, 'worker-profile-stats');
     const jobs = el('article', undefined, 'worker-stat-jobs'); jobs.append(el('span', 'Completed jobs'), el('strong', String(profile.completedJobs)));
     const speed = el('article', undefined, 'worker-stat-speed'); speed.append(el('span', 'Median time to first submission'), el('strong', duration(profile.medianFirstDeliverySeconds)), el('small', 'Across completed jobs · delivery speed, not quality'));

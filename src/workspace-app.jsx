@@ -1480,6 +1480,130 @@ function ActivityInbox({ session }) {
   </>;
 }
 
+function MessagesInbox({ session }) {
+  const [conversations, setConversations] = useState([]);
+  const [selectedId, setSelectedId] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [newMessage, setNewMessage] = useState(false);
+  const [recipient, setRecipient] = useState('');
+  const [asRole, setAsRole] = useState('buyer');
+  const [verifiedWorker, setVerifiedWorker] = useState(false);
+  const [draft, setDraft] = useState('');
+  const prefilled = useRef(false);
+
+  async function loadConversations(quiet = false) {
+    try {
+      const result = await JobsAIAPI.messageConversations(session.token);
+      setConversations(result.data || []);
+      const badge = document.getElementById('messages-unread-badge');
+      const unread = (result.data || []).reduce((total, item) => total + Number(item.unreadCount || 0), 0);
+      if (badge) { badge.hidden = unread < 1; badge.textContent = unread > 99 ? '99+' : String(unread); }
+      if (!quiet) setLoading(false);
+      return result.data || [];
+    } catch (reason) {
+      setLoading(false);
+      setError({ title: 'Could not load messages', message: reason.message || 'JobsAI could not load your conversations.' });
+      return [];
+    }
+  }
+
+  async function loadMessages(id, quiet = false) {
+    if (!quiet) setBusy(true);
+    try {
+      const result = await JobsAIAPI.conversationMessages(id, session.token);
+      setMessages(result.data || []);
+      void loadConversations(true);
+      if (!quiet) setBusy(false);
+      return result.data || [];
+    } catch (reason) {
+      setBusy(false);
+      setError({ title: 'Could not load conversation', message: reason.message || 'JobsAI could not load these messages.' });
+      return [];
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+    JobsAIAPI.workerProfile(session.token).then(result => { if (active) setVerifiedWorker(result?.data?.status === 'approved'); }).catch(() => {});
+    void loadConversations();
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') void loadConversations(true); }, 30_000);
+    return () => { active = false; clearInterval(timer); };
+  }, [session.token]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    void loadMessages(selectedId, true);
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') void loadMessages(selectedId, true); }, 8_000);
+    return () => clearInterval(timer);
+  }, [selectedId, session.token]);
+
+  useEffect(() => {
+    if (prefilled.current) return;
+    const params = new URLSearchParams(location.search);
+    const to = params.get('to');
+    if (!to) return;
+    prefilled.current = true;
+    setRecipient(to.replace(/^@/, ''));
+    setAsRole(params.get('role') === 'worker' ? 'worker' : 'buyer');
+    setNewMessage(true);
+  }, []);
+
+  async function startConversation(event) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      const result = await JobsAIAPI.startMessageConversation(recipient.trim().replace(/^@/, ''), asRole, session.token);
+      const id = result.data.conversationId;
+      const rows = await loadConversations(true);
+      setSelectedId(id);
+      setMessages([]);
+      setNewMessage(false);
+      setRecipient('');
+      setBusy(false);
+      if (!rows.some(row => row.id === id)) await loadConversations(true);
+    } catch (reason) {
+      setBusy(false);
+      setError({ title: 'Could not start conversation', message: reason.message || 'Check the usertag and try again.' });
+    }
+  }
+
+  async function sendMessage(event) {
+    event.preventDefault();
+    if (!draft.trim() || !selectedId || busy) return;
+    setBusy(true);
+    try {
+      await JobsAIAPI.sendDirectMessage(selectedId, draft, session.token);
+      setDraft('');
+      await Promise.all([loadMessages(selectedId, true), loadConversations(true)]);
+    } catch (reason) {
+      setError({ title: 'Message not sent', message: reason.message || 'JobsAI could not send your message.' });
+    } finally { setBusy(false); }
+  }
+
+  const selected = conversations.find(item => item.id === selectedId);
+  return <>
+    <section className="messages-layout" aria-label="Messages">
+      <aside className="messages-sidebar"><div className="messages-sidebar-head"><h2>Conversations</h2><button className="pill primary" onClick={() => setNewMessage(true)}>New message</button></div>
+        {loading ? <p className="messages-empty">Loading conversations…</p> : conversations.length === 0 ? <div className="messages-empty"><span aria-hidden="true">✉</span><strong>No conversations yet</strong><p>Start a conversation with a JobsAI approved worker or buyer.</p></div> : <div className="messages-conversation-list">{conversations.map(item => <button key={item.id} className={`messages-conversation${item.id === selectedId ? ' is-selected' : ''}`} onClick={() => setSelectedId(item.id)}>
+          <span className="messages-avatar">{(item.counterpart.name || item.counterpart.userTag || 'J').replace(/^@/, '').slice(0, 1).toUpperCase()}</span><span className="messages-conversation-copy"><strong>{item.counterpart.name || (item.counterpart.userTag ? `@${item.counterpart.userTag}` : 'JobsAI member')}</strong><small>{item.counterpart.role === 'worker' ? 'JobsAI approved worker' : item.counterpart.userTag ? `@${item.counterpart.userTag}` : 'Buyer'}</small><span>{item.lastMessage?.body || 'Start the conversation'}</span></span>{item.unreadCount > 0 && <b className="messages-unread">{item.unreadCount}</b>}
+        </button>)}</div>}
+      </aside>
+      <section className="messages-thread" aria-label={selected ? `Conversation with ${selected.counterpart.name || `@${selected.counterpart.userTag}`}` : 'Conversation'}>
+        {selected ? <><header className="messages-thread-head"><div><span className="eyebrow">{selected.counterpart.role === 'worker' ? 'JOBS AI APPROVED WORKER' : 'BUYER'}</span><h2>{selected.counterpart.name || (selected.counterpart.userTag ? `@${selected.counterpart.userTag}` : 'JobsAI member')}</h2></div>{selected.counterpart.userTag && <span className="messages-user-tag">@{selected.counterpart.userTag}</span>}</header>
+          <aside className="messages-safety"><strong>Keep job work and payment on JobsAI.</strong><p>Off-platform arrangements lose JobsAI escrow protection, and our team may not be able to help if work or payment goes wrong. Never share passwords or wallet recovery phrases.</p></aside>
+          <div className="messages-history" aria-live="polite">{messages.length === 0 && <div className="messages-empty"><span aria-hidden="true">✉</span><strong>Start the conversation</strong><p>Keep your messages respectful and focused on the work.</p></div>}{messages.map(message => <article key={message.id} className={`direct-message${message.sentByMe ? ' from-me' : ''}`}><p>{message.body}</p><small>{message.sentByMe ? 'You' : message.senderUserTag ? `@${message.senderUserTag}` : 'JobsAI member'} · {new Date(message.createdAt).toLocaleString()}</small></article>)}</div>
+          <form className="messages-compose" onSubmit={sendMessage}><label className="sr-only" htmlFor="direct-message-draft">Write a message</label><textarea id="direct-message-draft" rows="2" maxLength="5000" value={draft} onChange={event => setDraft(event.target.value)} placeholder="Write a message…" /><button className="pill primary" type="submit" disabled={busy || !draft.trim()}>{busy ? 'Sending…' : 'Send'}</button></form>
+        </> : <div className="messages-no-selection"><span aria-hidden="true">✉</span><h2>Your conversations</h2><p>Choose a conversation or start a new one.</p><button className="pill primary" onClick={() => setNewMessage(true)}>New message</button></div>}
+      </section>
+    </section>
+    {newMessage && <div className="workspace-overlay"><section className="workspace-modal workspace-information" role="dialog" aria-modal="true" aria-labelledby="new-message-title"><span className="workspace-modal-symbol" aria-hidden="true">✉</span><h2 id="new-message-title">Start a conversation</h2><p>Find a person by their JobsAI usertag.</p><form className="message-start-form" onSubmit={startConversation}><label>Contact’s usertag<input autoFocus required minLength="3" maxLength="24" pattern="@?[a-zA-Z0-9][a-zA-Z0-9_-]{2,23}" value={recipient} onChange={event => setRecipient(event.target.value)} placeholder="theirname" /></label><label>Contacting as<select value={asRole} onChange={event => setAsRole(event.target.value)}><option value="buyer">Buyer</option>{verifiedWorker && <option value="worker">JobsAI approved worker</option>}</select></label><small>Buyer conversations can be started with JobsAI approved workers. Worker conversations require your approved profile.</small><div className="workflow-dialog-actions"><button type="button" className="pill outline" onClick={() => setNewMessage(false)} disabled={busy}>Cancel</button><button className="pill primary" type="submit" disabled={busy}>{busy ? 'Opening…' : 'Continue'}</button></div></form></section></div>}
+    {error && <div className="workspace-overlay"><section className="workspace-modal error" role="alertdialog" aria-modal="true" aria-labelledby="messages-error-title"><span className="workspace-modal-symbol" aria-hidden="true">!</span><h2 id="messages-error-title">{error.title}</h2><p>{error.message}</p><button className="pill primary" onClick={() => setError(null)}>Got it</button></section></div>}
+  </>;
+}
+
 function WorkspaceContext() {
   const { address, chainId, isConnected, isReconnecting } = useAccount();
   const { disconnectAsync } = useDisconnect();
@@ -1497,6 +1621,7 @@ function WorkspaceContext() {
   const buyerApiSettingsRoot = document.getElementById('buyer-api-settings-root');
   const adminNavRoot = document.getElementById('admin-nav-root');
   const activityRoot = document.getElementById('activity-root');
+  const messagesRoot = document.getElementById('messages-root');
 
   useEffect(() => {
     if (!session?.token) { setIsAdmin(false); return; }
@@ -1536,11 +1661,12 @@ function WorkspaceContext() {
     goToAuth();
   }
 
-  if (!header || !jobsRoot || !workRoot || !createJobRoot || !agentsRoot || !servicesCatalogRoot || !profileRoot || !buyerApiSettingsRoot || !adminNavRoot || !activityRoot || !session?.token) return null;
+  if (!header || !jobsRoot || !workRoot || !createJobRoot || !agentsRoot || !servicesCatalogRoot || !profileRoot || !buyerApiSettingsRoot || !adminNavRoot || !activityRoot || !messagesRoot || !session?.token) return null;
   return <>
     {createPortal(<><ConnectButton.Custom>{({ account, openAccountModal, mounted }) => <><a className="workspace-header-usertag" href={identity.userTag ? `worker.html?tag=${encodeURIComponent(identity.userTag)}` : undefined} aria-label={identity.userTag ? `Open @${identity.userTag} profile` : undefined}>{identity.userTag ? `@${identity.userTag}` : null}</a><button className="workspace-account-button" onClick={openAccountModal} disabled={!mounted || !account} aria-label={`Connected wallet ${account?.displayName || ''}`}><span className="workspace-account-status" />{account?.displayName || 'Connected wallet'}</button></>}</ConnectButton.Custom><button className="workspace-signout" onClick={signOut}>Sign out</button></>, header)}
     {createPortal(<FundedJobs session={session} />, jobsRoot)}
     {createPortal(<ActivityInbox session={session} />, activityRoot)}
+    {createPortal(<MessagesInbox session={session} />, messagesRoot)}
     {createPortal(<MyWork session={session} walletAddress={address} userTag={identity.userTag} />, workRoot)}
     {createPortal(<CreateJobPanel session={session} walletAddress={address} chainId={chainId} />, createJobRoot)}
     {createPortal(<AgentManagement session={session} />, agentsRoot)}
