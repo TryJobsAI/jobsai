@@ -27,13 +27,19 @@
     const avatar = el('div', undefined, 'worker-public-avatar');
     const avatarImage = el('img'); avatarImage.src = profile.avatarUrl || 'assets/jobsai-approved-mark.svg'; avatarImage.alt = `${profile.fullName} profile photo`; avatar.append(avatarImage);
     const heading = el('div', undefined, 'worker-public-heading');
-    heading.append(el('span', 'JOBS AI WORKER', 'eyebrow'));
     const identity = el('div', undefined, 'worker-public-identity');
     const nameLine = el('div', undefined, 'worker-public-name-line');
     nameLine.append(el('h1', profile.fullName));
     if (profile.verified) {
-      const seal = el('span', '✓', 'worker-verification-seal');
+      const seal = el('span', undefined, 'worker-verification-seal');
       seal.setAttribute('role', 'img'); seal.setAttribute('aria-label', 'JobsAI approved');
+      const check = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      check.setAttribute('viewBox', '0 0 24 24'); check.setAttribute('aria-hidden', 'true');
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', 'm5 12.5 4.5 4.5L19 7.5');
+      path.setAttribute('fill', 'none'); path.setAttribute('stroke', 'currentColor');
+      path.setAttribute('stroke-width', '3'); path.setAttribute('stroke-linecap', 'round'); path.setAttribute('stroke-linejoin', 'round');
+      check.append(path); seal.append(check);
       nameLine.append(seal);
     }
     if (userTag) nameLine.append(el('span', `@${userTag}`, 'worker-user-tag'));
