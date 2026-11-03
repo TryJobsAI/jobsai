@@ -40,6 +40,14 @@
       "destination": "https://jobsai-api.onrender.com/v1/workers/:path*"
     },
     {
+      "source": "/api/jobsai/v1/user-tags",
+      "destination": "https://jobsai-api.onrender.com/v1/user-tags"
+    },
+    {
+      "source": "/api/jobsai/v1/user-tags/:path*",
+      "destination": "https://jobsai-api.onrender.com/v1/user-tags/:path*"
+    },
+    {
       "source": "/api/jobsai/v1/master/:path*",
       "destination": "https://jobsai-api.onrender.com/v1/master/:path*"
     },
