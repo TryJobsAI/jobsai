@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { ConnectButton, RainbowKitProvider } from '@rainbow-me/rainbowkit';
@@ -295,6 +295,11 @@ function FundedJobs({ session }) {
 function CreateJobPanel({ session, walletAddress, chainId }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [voiceDialog, setVoiceDialog] = useState(null);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const speechRecognitionRef = useRef(null);
+  const voiceTranscriptRef = useRef('');
+  const voiceErrorRef = useRef(false);
   const [codeRepo, setCodeRepo] = useState('');
   const [codeFiles, setCodeFiles] = useState([]);
   const [criteria, setCriteria] = useState('');
@@ -316,6 +321,54 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
   const publicClient = usePublicClient({ chainId: robinhood.id });
   const { sendTransactionAsync } = useSendTransaction();
   const { writeContractAsync } = useWriteContract();
+
+  useEffect(() => () => speechRecognitionRef.current?.abort(), []);
+
+  function stopVoiceCapture() {
+    speechRecognitionRef.current?.stop();
+  }
+
+  function startVoiceCapture() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setVoiceDialog({ kind: 'unavailable', title: 'Voice typing is unavailable', message: 'This browser does not support voice typing. Try a recent version of Chrome, Edge, or Safari, or type your brief instead.' });
+      return;
+    }
+    try {
+      const recognition = new SpeechRecognition();
+      speechRecognitionRef.current = recognition;
+      voiceTranscriptRef.current = '';
+      voiceErrorRef.current = false;
+      recognition.lang = 'en-US';
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      recognition.onresult = event => {
+        const text = Array.from(event.results).slice(event.resultIndex).filter(result => result.isFinal).map(result => result[0]?.transcript?.trim()).filter(Boolean).join(' ');
+        if (!text) return;
+        voiceTranscriptRef.current = [voiceTranscriptRef.current, text].filter(Boolean).join(' ');
+        setDescription(current => `${current}${current && !/\s$/.test(current) ? ' ' : ''}${text}`);
+      };
+      recognition.onerror = event => {
+        voiceErrorRef.current = true;
+        setVoiceDialog({ kind: 'error', title: 'Could not record your voice', message: event.error === 'not-allowed' ? 'Allow microphone access in your browser settings, then try again.' : 'The browser could not turn that recording into text. Check your microphone and try again.' });
+      };
+      recognition.onend = () => {
+        speechRecognitionRef.current = null;
+        setVoiceListening(false);
+        if (voiceErrorRef.current) return;
+        setVoiceDialog(voiceTranscriptRef.current
+          ? { kind: 'done', title: 'Voice added to your brief', message: 'Review and edit the text in the job description before creating your job.' }
+          : { kind: 'unavailable', title: 'No speech detected', message: 'No text was captured. Check your microphone and try again.' });
+      };
+      recognition.start();
+      setVoiceListening(true);
+      setVoiceDialog({ kind: 'listening', title: 'Listening', message: 'Speak in English. Your browser handles speech recognition and may use its speech service. JobsAI adds the transcript to your brief for you to review.' });
+    } catch {
+      speechRecognitionRef.current = null;
+      setVoiceListening(false);
+      setVoiceDialog({ kind: 'error', title: 'Could not start voice typing', message: 'Allow microphone access in your browser, then try again.' });
+    }
+  }
 
   async function loadJobs(showLoading = true) {
     if (showLoading) setFeedback({ title: 'Loading your jobs', message: 'Retrieving jobs created from this wallet…', kind: 'loading' });
@@ -501,7 +554,7 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
       {templates.length > 0 && <label className="job-template-picker">Start from a template <small>Optional</small><select value="" onChange={event => applyTemplate(event.target.value)} disabled={saving || drafting}><option value="">Choose a ready-made brief…</option>{templates.map(template => <option key={template.id} value={template.id}>{template.name} — {template.summary}</option>)}</select></label>}
       <div className="job-draft-box"><label htmlFor="job-draft-prompt">Start from one sentence <small>Optional</small></label><textarea id="job-draft-prompt" rows="2" maxLength="600" placeholder="e.g. Translate my restaurant menu into Spanish and French, keeping prices and dish names" value={draftPrompt} onChange={event => setDraftPrompt(event.target.value)} /><div className="job-draft-actions"><button type="button" className="pill outline" onClick={draftFromSentence} disabled={drafting || saving}>{drafting ? 'Drafting…' : 'Draft the brief'}</button><small>AI fills in the fields below for you to edit.</small></div></div>
       <label>Job title<input required minLength="3" maxLength="160" value={title} onChange={event => setTitle(event.target.value)} /></label>
-      <label>Description<textarea required maxLength="20000" rows="5" value={description} onChange={event => setDescription(event.target.value)} /></label>
+      <label>Description<div className="voice-input-wrap"><textarea required maxLength="20000" rows="5" value={description} onChange={event => setDescription(event.target.value)} /><button className={`voice-input-button${voiceListening ? ' is-listening' : ''}`} type="button" aria-label={voiceListening ? 'Stop voice typing' : 'Add to brief by voice'} aria-pressed={voiceListening} title={voiceListening ? 'Stop voice typing' : 'Add to brief by voice'} onClick={voiceListening ? stopVoiceCapture : startVoiceCapture} disabled={saving || drafting}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8"/></svg></button></div></label>
       <label>Work category<select value={category} onChange={event => setCategory(event.target.value)}><option value="writing">Article or social thread writing</option><option value="image_generation">Image generation</option><option value="research">Research</option><option value="design">Design</option><option value="coding">Coding or code review</option><option value="data">Data</option><option value="other">Other</option></select></label>
       {category === 'coding' && <fieldset className="job-code-source"><legend>Code review source <small>Optional</small></legend><label>Public GitHub repository<input type="url" inputMode="url" placeholder="https://github.com/owner/repository" value={codeRepo} onChange={event => setCodeRepo(event.target.value)} /></label><label>Or attach source files<input type="file" accept=".c,.cc,.cpp,.cs,.css,.go,.h,.hpp,.html,.java,.js,.jsx,.kt,.md,.php,.py,.rb,.rs,.sh,.sql,.swift,.ts,.tsx,.vue,.xml,.yaml,.yml,.json,.txt" multiple onChange={event => { const files = Array.from(event.target.files || []); const total = files.reduce((sum, file) => sum + file.size, 0); if (files.length > 8 || total > 12000) { event.target.value = ''; setCodeFiles([]); setFeedback({ title: 'Choose fewer or smaller files', message: 'Attach up to 8 text files with a combined size under 12 KB. For larger codebases, provide a public GitHub repository link.', kind: 'error' }); return; } setCodeFiles(files); }} /></label><small>{codeFiles.length ? `${codeFiles.length} source file${codeFiles.length === 1 ? '' : 's'} selected` : 'Only attach code you are comfortable sharing with workers on the public job board. Larger codebases can use a public GitHub link.'}</small></fieldset>}
       <div className="criteria-field"><div className="criteria-field-header"><label htmlFor="job-acceptance-criteria">Acceptance criteria</label><button type="button" className="inline-info-button" onClick={() => setJobInfo({ title: 'Acceptance criteria', paragraphs: ['Enter one clear condition per line. For example: “Works on mobile and desktop” or “Include the source files.” The worker and client use these conditions to review each submission and revision.'] })}>How to write criteria</button></div><textarea id="job-acceptance-criteria" required rows="4" value={criteria} onChange={event => setCriteria(event.target.value)} /></div>
@@ -524,6 +577,7 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
       </article>)}</div>
     </section>
     {feedback && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="create-job-modal-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="create-job-modal-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
+    {voiceDialog && <div className="workspace-overlay"><section className={`workspace-modal ${voiceDialog.kind === 'listening' ? 'loading' : voiceDialog.kind === 'done' ? 'success' : voiceDialog.kind === 'unavailable' ? 'info' : 'error'}`} role="dialog" aria-modal="true" aria-labelledby="voice-dialog-title"><span className="workspace-modal-symbol" aria-hidden="true">{voiceDialog.kind === 'listening' ? <i /> : voiceDialog.kind === 'done' ? '✓' : voiceDialog.kind === 'unavailable' ? 'i' : '!'}</span><h2 id="voice-dialog-title">{voiceDialog.title}</h2><p>{voiceDialog.message}</p>{voiceDialog.kind === 'listening' ? <button className="pill primary" onClick={stopVoiceCapture}>Stop recording</button> : <button className="pill primary" onClick={() => setVoiceDialog(null)}>Got it</button>}</section></div>}
     <InformationDialog info={jobInfo} onClose={() => setJobInfo(null)} />
     {reviewing && <div className="workspace-overlay"><section className="workspace-modal workspace-information workflow-dialog proposals-dialog" role="dialog" aria-modal="true" aria-labelledby="proposals-dialog-title">
       <span className="workspace-modal-symbol" aria-hidden="true">✎</span><h2 id="proposals-dialog-title">Proposals</h2><p>{reviewing.job.title} · {reviewing.job.amount} {reviewing.job.asset}</p>
