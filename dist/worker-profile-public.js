@@ -20,30 +20,42 @@
   function renderProfile(profile, userTag) {
     document.title = `${profile.fullName} · JobsAI worker`;
     const card = el('section', undefined, 'worker-public-card');
-    const heading = el('header', undefined, 'worker-public-heading');
-    const headingTop = el('div', undefined, 'worker-public-heading-top');
-    headingTop.append(el('span', 'JOBS AI WORKER', 'eyebrow'));
-    if (profile.verified) headingTop.append(el('span', '✓ JobsAI approved', 'worker-verified-badge'));
+    const banner = el('div', undefined, 'worker-public-banner');
+    if (profile.bannerUrl) { const image = el('img'); image.src = profile.bannerUrl; image.alt = ''; banner.append(image); }
+    const content = el('div', undefined, 'worker-public-content');
+    const profileRow = el('header', undefined, 'worker-public-profile-row');
+    const avatar = el('div', undefined, 'worker-public-avatar');
+    const avatarImage = el('img'); avatarImage.src = profile.avatarUrl || 'assets/jobsai-approved-mark.svg'; avatarImage.alt = `${profile.fullName} profile photo`; avatar.append(avatarImage);
+    const heading = el('div', undefined, 'worker-public-heading');
+    heading.append(el('span', 'JOBS AI WORKER', 'eyebrow'));
     const identity = el('div', undefined, 'worker-public-identity');
-    identity.append(el('h1', profile.fullName));
-    if (userTag) identity.append(el('span', `@${userTag}`, 'worker-user-tag'));
-    heading.append(headingTop, identity);
+    const nameLine = el('div', undefined, 'worker-public-name-line');
+    nameLine.append(el('h1', profile.fullName));
+    if (profile.verified) {
+      const seal = el('span', '✓', 'worker-verification-seal');
+      seal.setAttribute('role', 'img'); seal.setAttribute('aria-label', 'JobsAI approved');
+      nameLine.append(seal);
+    }
+    if (userTag) nameLine.append(el('span', `@${userTag}`, 'worker-user-tag'));
+    identity.append(nameLine);
+    heading.append(identity);
+    profileRow.append(avatar, heading);
     const details = el('dl', undefined, 'worker-public-details');
     for (const [label, value] of [['Location', `${profile.country} · ${profile.timeZone}`], ['Working hours', profile.workHours]]) {
       const detail = el('div'); detail.append(el('dt', label), el('dd', value)); details.append(detail);
     }
-    card.append(heading, details);
+    content.append(profileRow, details);
     const stats = el('div', undefined, 'worker-profile-stats');
     const jobs = el('article', undefined, 'worker-stat-jobs'); jobs.append(el('span', 'Completed jobs'), el('strong', String(profile.completedJobs)));
     const speed = el('article', undefined, 'worker-stat-speed'); speed.append(el('span', 'Median time to first submission'), el('strong', duration(profile.medianFirstDeliverySeconds)), el('small', 'Across completed jobs · delivery speed, not quality'));
-    stats.append(jobs, speed); card.append(stats);
+    stats.append(jobs, speed); content.append(stats);
     const rateSection = el('section', undefined, 'worker-public-section');
     rateSection.append(el('h2', 'Rates'));
     const rates = el('div', undefined, 'worker-public-rates');
     for (const tier of profile.rateTiers || []) {
       const item = el('article', undefined, 'worker-public-rate'); item.append(el('h3', tier.name), el('p', tier.scope), el('strong', `${tier.amount} ${tier.asset.toUpperCase()}`)); rates.append(item);
     }
-    rateSection.append(rates); card.append(rateSection);
+    rateSection.append(rates); content.append(rateSection);
     const historySection = el('section', undefined, 'worker-public-section');
     historySection.append(el('h2', 'Completed work'));
     if (profile.completedJobHistory?.length) {
@@ -53,7 +65,8 @@
       }
       historySection.append(list);
     } else historySection.append(el('p', 'Completed work will appear here after a job is settled.'));
-    card.append(historySection);
+    content.append(historySection);
+    card.append(banner, content);
     root.replaceChildren(card);
   }
 

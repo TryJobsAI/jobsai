@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Router } from "express";
+import express, { Router } from "express";
 import { z } from "zod";
 import { requireAuth, requireTeamPassword } from "./auth.js";
 import { config } from "./config.js";
@@ -8,6 +8,7 @@ import { ApiError, asyncRoute } from "./http.js";
 import { requireAdmin } from "./admin.js";
 import { parseJobAmount } from "./job-input.js";
 import { rateLimit, requestIdentity } from "./rate-limit.js";
+import { IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES, uploadWorkerProfileImage } from "./media.js";
 
 export const workerProfilesRouter = Router();
 export const workerApplicationsAdminRouter = Router();
@@ -27,6 +28,8 @@ const profileSchema = z.object({
   email: z.string().trim().email().max(254),
   phone: z.string().trim().regex(/^\+?[0-9 ()-]{7,39}$/),
   rateTiers: z.array(rateTierSchema).min(1).max(8),
+  avatarUrl: z.string().url().max(2_048).nullable().default(null).refine((value) => value === null || /^https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\//.test(value), "Choose an uploaded profile image."),
+  bannerUrl: z.string().url().max(2_048).nullable().default(null).refine((value) => value === null || /^https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\//.test(value), "Choose an uploaded banner image."),
   publicProfile: z.boolean().default(true),
 }).strict().superRefine((profile, context) => {
   try { new Intl.DateTimeFormat("en", { timeZone: profile.timeZone }); }
@@ -52,6 +55,7 @@ const reviewSchema = z.object({
 type ProfileRow = {
   id: string; user_id: string; slug: string; full_name: string; country: string; time_zone: string;
   work_hours: string; email: string; phone: string; rate_tiers: unknown; public_profile: boolean;
+  avatar_url: string | null; banner_url: string | null;
   status: string; review_note: string | null; submitted_at: Date; reviewed_at: Date | null; user_tag?: string | null;
 };
 
@@ -65,6 +69,8 @@ function publicFields(profile: ProfileRow) {
     timeZone: profile.time_zone,
     workHours: profile.work_hours,
     rateTiers: profile.rate_tiers,
+    avatarUrl: profile.avatar_url,
+    bannerUrl: profile.banner_url,
     verified: profile.status === "approved",
   };
 }
@@ -115,21 +121,31 @@ workerProfilesRouter.put("/me", requireAuth, rateLimit([
   const slugBase = input.fullName.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 44) || "worker";
   const slug = `${slugBase}-${id.slice(0, 8)}`;
   const result = await db.query<ProfileRow>(
-    `INSERT INTO worker_profiles(user_id,slug,full_name,country,time_zone,work_hours,email,phone,rate_tiers,public_profile,status,submitted_at,reviewed_at,review_note)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending_review',now(),NULL,NULL)
+    `INSERT INTO worker_profiles(user_id,slug,full_name,country,time_zone,work_hours,email,phone,rate_tiers,avatar_url,banner_url,public_profile,status,submitted_at,reviewed_at,review_note)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pending_review',now(),NULL,NULL)
      ON CONFLICT(user_id) DO UPDATE SET full_name=EXCLUDED.full_name,country=EXCLUDED.country,
        time_zone=EXCLUDED.time_zone,work_hours=EXCLUDED.work_hours,email=EXCLUDED.email,phone=EXCLUDED.phone,
-       rate_tiers=EXCLUDED.rate_tiers,public_profile=EXCLUDED.public_profile,status='pending_review',
+       rate_tiers=EXCLUDED.rate_tiers,avatar_url=EXCLUDED.avatar_url,banner_url=EXCLUDED.banner_url,
+       public_profile=EXCLUDED.public_profile,status='pending_review',
        submitted_at=now(),reviewed_at=NULL,review_note=NULL,updated_at=now()
      RETURNING *`,
     [request.auth!.userId, slug, input.fullName, input.country, input.timeZone, input.workHours,
-      input.email.toLowerCase(), input.phone, JSON.stringify(input.rateTiers), input.publicProfile],
+      input.email.toLowerCase(), input.phone, JSON.stringify(input.rateTiers), input.avatarUrl, input.bannerUrl, input.publicProfile],
   );
   response.status(200).json({ data: {
     ...publicFields(result.rows[0]), email: result.rows[0].email, phone: result.rows[0].phone,
     publicProfile: result.rows[0].public_profile, status: result.rows[0].status,
     reviewNote: null, ...(await workStats(request.auth!.userId)),
   } });
+}));
+
+workerProfilesRouter.post("/me/images/:kind", requireAuth, rateLimit([
+  { scope: "worker-profile-image-user", limit: 12, windowSeconds: 3_600, identity: requestIdentity.authenticatedUser },
+]), express.raw({ type: [...IMAGE_CONTENT_TYPES], limit: MAX_IMAGE_BYTES }), asyncRoute(async (request, response) => {
+  const kind = z.enum(["avatar", "banner"]).parse(request.params.kind);
+  if (!Buffer.isBuffer(request.body)) throw new ApiError(415, "unsupported_image_type", "Upload a JPEG, PNG, WebP, or GIF image.");
+  const uploaded = await uploadWorkerProfileImage(request.body, request.header("content-type")?.split(";")[0].trim().toLowerCase() || "", request.auth!.userId, kind);
+  response.status(201).json({ data: uploaded });
 }));
 
 workerProfilesRouter.get("/:slug", asyncRoute(async (request, response) => {

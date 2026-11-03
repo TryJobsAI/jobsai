@@ -58,12 +58,10 @@ export function createCloudinaryImageFile(bytes: Buffer, contentType: string, pu
   return new File([imageData.buffer], `${publicId}.${extension[validType]}`, { type: validType });
 }
 
-export async function uploadSubmissionImage(bytes: Buffer, contentType: string, jobId: string) {
+async function uploadCloudinaryImage(bytes: Buffer, contentType: string, folder: string, publicId: string) {
   const validType = validateSubmissionImage(bytes, contentType);
   const { cloudName, apiKey, apiSecret } = cloudinaryCredentials();
   const timestamp = Math.floor(Date.now() / 1000);
-  const folder = `jobsai/submissions/${jobId}`;
-  const publicId = randomUUID();
   const signatureBase = `folder=${folder}&public_id=${publicId}&timestamp=${timestamp}${apiSecret}`;
   const signature = createHash("sha1").update(signatureBase).digest("hex");
   const form = new FormData();
@@ -91,6 +89,16 @@ export async function uploadSubmissionImage(bytes: Buffer, contentType: string, 
   if (typeof result.secure_url !== "string" || !result.secure_url.startsWith(expectedPrefix))
     throw new ApiError(502, "media_upload_failed", "Cloud image storage returned an invalid image URL.");
   return { url: result.secure_url, format: typeof result.format === "string" ? result.format : "image", bytes: typeof result.bytes === "number" ? result.bytes : bytes.length };
+}
+
+export function uploadSubmissionImage(bytes: Buffer, contentType: string, jobId: string) {
+  return uploadCloudinaryImage(bytes, contentType, `jobsai/submissions/${jobId}`, randomUUID());
+}
+
+export async function uploadWorkerProfileImage(bytes: Buffer, contentType: string, userId: string, kind: "avatar" | "banner") {
+  const folder = `jobsai/worker-profiles/${userId}`;
+  const publicId = `${kind}-${randomUUID()}`;
+  return uploadCloudinaryImage(bytes, contentType, folder, publicId);
 }
 
 const documentExtensions: Record<DocumentContentType, string> = {

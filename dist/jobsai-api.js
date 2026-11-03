@@ -39,6 +39,7 @@
     myAgents: token => request('/v1/agents', { token }),
     workerProfile: token => request('/v1/workers/me', { token }),
     submitWorkerProfile: (profile, token) => request('/v1/workers/me', { method: 'PUT', token, body: profile }),
+    uploadWorkerProfileImage: async (file, kind, token) => request(`/v1/workers/me/images/${encodeURIComponent(kind)}`, { method: 'POST', token, body: await file.arrayBuffer(), contentType: file.type }),
     publicWorkerProfile: slug => request(`/v1/workers/${encodeURIComponent(slug)}`),
     userTag: token => request('/v1/user-tags/me', { token }),
     setUserTag: (userTag, token) => request('/v1/user-tags/me', { method: 'PUT', token, body: { userTag } }),

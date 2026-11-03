@@ -36,9 +36,12 @@ export async function proxyJobsAI(request) {
   if (apiPath === "/v1/speech/transcribe" && (method !== "POST" || !SPEECH_CONTENT_TYPES.has((request.headers.get("content-type") || "").split(";")[0].trim().toLowerCase())))
     return json(415, "unsupported_audio_type", "Firefox voice typing supports OGG or WebM audio.");
   const isJobSourceUpload = /^\/v1\/(?:jobs|buyer\/jobs)\/[0-9a-f-]+\/source-file$/i.test(apiPath);
+  const isWorkerProfileImageUpload = /^\/v1\/workers\/me\/images\/(?:avatar|banner)$/.test(apiPath);
+  if (isWorkerProfileImageUpload && (method !== "POST" || !IMAGE_CONTENT_TYPES.has((request.headers.get("content-type") || "").split(";")[0].trim().toLowerCase())))
+    return json(415, "unsupported_image_type", "Upload a JPEG, PNG, WebP, or GIF image.");
   if (isJobSourceUpload && (method !== "POST" || !DOCUMENT_CONTENT_TYPES.has((request.headers.get("content-type") || "").split(";")[0].trim().toLowerCase())))
     return json(415, "unsupported_document_type", "Use a PDF, DOCX, Markdown, or plain text document.");
-  const maxBodyBytes = apiPath === "/v1/media/images" ? MAX_IMAGE_BYTES : apiPath === "/v1/speech/transcribe" ? MAX_SPEECH_AUDIO_BYTES : isJobSourceUpload ? MAX_JOB_SOURCE_BYTES : MAX_BODY_BYTES;
+  const maxBodyBytes = apiPath === "/v1/media/images" || isWorkerProfileImageUpload ? MAX_IMAGE_BYTES : apiPath === "/v1/speech/transcribe" ? MAX_SPEECH_AUDIO_BYTES : isJobSourceUpload ? MAX_JOB_SOURCE_BYTES : MAX_BODY_BYTES;
   const declaredSize = Number(request.headers.get("content-length") || 0);
   if (declaredSize > maxBodyBytes) return json(413, "request_too_large", "The request is too large.");
   const body = method === "GET" ? undefined : await request.arrayBuffer();

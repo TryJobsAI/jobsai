@@ -1125,7 +1125,7 @@ function WorkerProfilePanel({ session }) {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const blankTier = () => ({ name: '', scope: '', asset: 'usdg', amount: '' });
-  const [form, setForm] = useState({ fullName: '', country: '', timeZone: '', workHours: '', email: '', phone: '', publicProfile: true, rateTiers: [blankTier()] });
+  const [form, setForm] = useState({ fullName: '', country: '', timeZone: '', workHours: '', email: '', phone: '', avatarUrl: null, bannerUrl: null, publicProfile: true, rateTiers: [blankTier()] });
   useEffect(() => {
     if (!session?.token) return;
     let active = true;
@@ -1133,7 +1133,7 @@ function WorkerProfilePanel({ session }) {
       if (!active) return;
       const value = response?.data || null;
       setProfile(value);
-      if (value) setForm({ fullName: value.fullName, country: value.country, timeZone: value.timeZone, workHours: value.workHours, email: value.email, phone: value.phone, publicProfile: value.publicProfile, rateTiers: value.rateTiers });
+      if (value) setForm({ fullName: value.fullName, country: value.country, timeZone: value.timeZone, workHours: value.workHours, email: value.email, phone: value.phone, avatarUrl: value.avatarUrl || null, bannerUrl: value.bannerUrl || null, publicProfile: value.publicProfile, rateTiers: value.rateTiers });
     }).catch(error => {
       if (active) setFeedback({ title: 'Could not load your worker profile', message: error.message || 'JobsAI could not retrieve your profile.', kind: 'error' });
     }).finally(() => { if (active) setLoaded(true); });
@@ -1141,6 +1141,23 @@ function WorkerProfilePanel({ session }) {
   }, [session.token]);
   function change(name, value) { setForm(current => ({ ...current, [name]: value })); }
   function changeTier(index, name, value) { setForm(current => ({ ...current, rateTiers: current.rateTiers.map((tier, i) => i === index ? { ...tier, [name]: value } : tier) })); }
+  async function uploadProfileImage(event, kind) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      setFeedback({ title: 'Choose a supported image', message: 'Use a JPEG, PNG, WebP, or GIF image up to 5 MB.', kind: 'error' });
+      return;
+    }
+    const label = kind === 'avatar' ? 'profile photo' : 'banner photo';
+    setBusy(true); setFeedback({ title: `Uploading ${label}`, message: 'Your image is being saved securely.', kind: 'loading' });
+    try {
+      const response = await JobsAIAPI.uploadWorkerProfileImage(file, kind, session.token);
+      change(kind === 'avatar' ? 'avatarUrl' : 'bannerUrl', response.data.url);
+      setFeedback({ title: `${kind === 'avatar' ? 'Profile photo' : 'Banner photo'} uploaded`, message: 'Submit your profile to save the changes and send it for review.', kind: 'success' });
+    } catch (error) { setFeedback({ title: `Could not upload ${label}`, message: error.message || 'JobsAI could not save this image.', kind: 'error' }); }
+    finally { setBusy(false); }
+  }
   async function save(event) {
     event.preventDefault();
     setBusy(true); setFeedback({ title: 'Sending your profile for review', message: 'Saving your details and adding your application to the JobsAI review queue…', kind: 'loading' });
@@ -1171,6 +1188,19 @@ function WorkerProfilePanel({ session }) {
     </>}
     <form className="create-job-form worker-profile-form" onSubmit={save}>
       <div className="create-job-form-heading"><span className="eyebrow">PROFILE DETAILS</span><h3>{profile ? 'Update your profile' : 'Set up your worker profile'}</h3><p>Submitting changes sends the profile back to the JobsAI team for review.</p></div>
+      <section className="worker-profile-media-editor" aria-label="Profile photos">
+        <div className="worker-profile-media-preview">
+          {form.bannerUrl && <img className="worker-profile-banner-image" src={form.bannerUrl} alt="" />}
+          <div className="worker-profile-avatar-frame"><img src={form.avatarUrl || 'assets/jobsai-approved-mark.svg'} alt="Profile photo preview" /></div>
+        </div>
+        <div className="worker-profile-media-actions">
+          <label className="pill outline">Choose profile photo<input className="worker-image-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={event => uploadProfileImage(event, 'avatar')} disabled={busy} /></label>
+          <label className="pill outline">Choose banner photo<input className="worker-image-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={event => uploadProfileImage(event, 'banner')} disabled={busy} /></label>
+          {form.avatarUrl && <button className="text-info-button" type="button" onClick={() => change('avatarUrl', null)}>Use JobsAI photo</button>}
+          {form.bannerUrl && <button className="text-info-button" type="button" onClick={() => change('bannerUrl', null)}>Use blue banner</button>}
+          <span>JPG, PNG, WebP, or GIF · up to 5 MB</span>
+        </div>
+      </section>
       <div className="create-job-payment-row"><label>Full name<input required minLength="2" maxLength="100" autoComplete="name" value={form.fullName} onChange={event => change('fullName', event.target.value)} /></label><label>Country<select required autoComplete="country-name" value={form.country} onChange={event => change('country', event.target.value)}><option value="" disabled>Select your country</option>{form.country && !COUNTRY_OPTIONS.includes(form.country) && <option value={form.country}>{form.country}</option>}{COUNTRY_OPTIONS.map(country => <option key={country} value={country}>{country}</option>)}</select></label></div>
       <div className="create-job-payment-row"><label>Time zone<select required value={form.timeZone} onChange={event => change('timeZone', event.target.value)}><option value="" disabled>Select your time zone</option>{form.timeZone && !TIME_ZONE_OPTIONS.includes(form.timeZone) && <option value={form.timeZone}>{form.timeZone}</option>}{[...new Set(TIME_ZONE_OPTIONS.map(zone => zone.includes('/') ? zone.split('/')[0] : 'Other'))].sort().map(region => <optgroup key={region} label={region}>{TIME_ZONE_OPTIONS.filter(zone => (zone.includes('/') ? zone.split('/')[0] : 'Other') === region).map(zone => <option key={zone} value={zone}>{zone}</option>)}</optgroup>)}</select></label><label>Work hours<input required maxLength="500" placeholder="Weekdays, 09:00–17:00" value={form.workHours} onChange={event => change('workHours', event.target.value)} /></label></div>
       <div className="create-job-payment-row"><label>Email for JobsAI review<input required type="email" maxLength="254" autoComplete="email" value={form.email} onChange={event => change('email', event.target.value)} /></label><label>Phone for JobsAI review<input required type="tel" maxLength="40" autoComplete="tel" value={form.phone} onChange={event => change('phone', event.target.value)} /></label></div>
