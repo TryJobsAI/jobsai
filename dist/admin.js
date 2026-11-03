@@ -11,6 +11,7 @@
   const note = document.querySelector('#worker-admin-note');
   const confirm = document.querySelector('#worker-admin-confirm');
   const signout = document.querySelector('#worker-admin-signout');
+  const lockAdmin = document.querySelector('#admin-lock');
   const sessionKey = 'jobsai-wallet-session-v1';
   let session = readSession();
   let decision = null;
@@ -26,7 +27,7 @@
     noteWrap.hidden = true; confirm.hidden = true;
     if (!dialog.open) dialog.showModal();
   }
-  function showGate() { gateRoot.hidden = false; adminWorkspace.hidden = true; signout.hidden = true; }
+  function showGate() { gateRoot.hidden = false; adminWorkspace.hidden = true; signout.hidden = true; lockAdmin.hidden = true; }
   function renderSignIn() {
     showGate(); gateRoot.replaceChildren();
     const card = el('section', undefined, 'worker-admin-card');
@@ -149,7 +150,7 @@
       card.append(el('h1', 'Could not verify admin access'), el('p', error.message || 'JobsAI could not verify this account.'));
       const retry = el('button', 'Try again', 'pill primary'); retry.addEventListener('click', loadAll); card.append(retry); gateRoot.append(card); return;
     }
-    gateRoot.hidden = true; adminWorkspace.hidden = false; signout.hidden = false;
+    gateRoot.hidden = true; adminWorkspace.hidden = false; signout.hidden = false; lockAdmin.hidden = false;
     const [usersResult, applicationsResult] = await Promise.all([
       JobsAIAPI.adminUsers(session.token), JobsAIAPI.workerApplications(session.token),
     ]);
@@ -191,6 +192,12 @@
     await JobsAIAPI.logout(session.token).catch(() => {});
     sessionStorage.removeItem(sessionKey);
     location.replace('/auth.html?next=admin.html');
+  });
+  lockAdmin.addEventListener('click', async () => {
+    lockAdmin.disabled = true;
+    try { await JobsAIAPI.teamLogout(session.token); await loadAll(); }
+    catch (error) { feedback('Could not lock admin', error.message || 'Try again.', 'error'); }
+    finally { lockAdmin.disabled = false; }
   });
   if (!session) renderSignIn();
   else loadAll().catch(error => feedback('Could not open admin', error.message || 'Try again.', 'error'));

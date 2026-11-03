@@ -70,9 +70,11 @@ dialog.workspace-modal{position:fixed;inset:0;margin:auto;max-height:calc(100% -
 [data-panel="settings"]>.workspace-title{margin-bottom:24px}
 @media(max-width:650px){.worker-profile-stats{grid-template-columns:1fr}.worker-profile-heading-actions{justify-content:flex-start}.worker-profile-panel>.created-jobs-heading{display:grid;gap:14px}.buyer-api-settings>.created-jobs-card{padding:20px}.buyer-api-settings .buyer-api-current{align-items:flex-start}.buyer-api-settings .buyer-api-actions{width:100%}.buyer-api-settings .buyer-api-actions .pill{flex:1;justify-content:center}}
 #admin-nav-root{display:contents}
-.workspace-primary-nav>[data-admin-nav]{display:flex;align-items:center;gap:12px;width:100%;padding:12px;border:0;border-radius:10px;background:transparent;color:#344054;font:inherit;font-size:13px;text-align:left;text-decoration:none;cursor:pointer}
+.workspace-primary-nav>[data-admin-nav]{box-sizing:border-box;display:flex;align-items:center;gap:10px;width:100%;min-height:46px;margin:0;padding:12px 11px;border:1.5px solid transparent;border-radius:10px;background:transparent;color:#344054;font:inherit;font-size:13px;line-height:1.2;text-align:left;text-decoration:none;cursor:pointer}
 .workspace-primary-nav>[data-admin-nav]:hover{background:#eaf1ff;color:#1556d9}
-.workspace-primary-nav>[data-admin-nav]>span{display:grid;place-items:center;flex:none;width:20px;font-size:17px}
+.workspace-primary-nav>[data-admin-nav]>span{display:grid;place-items:center;flex:none;width:24px;height:24px;font-size:24px;line-height:1;text-align:center}
+@media(max-width:800px){.workspace-primary-nav>[data-admin-nav]{flex:0 0 100px;width:auto;justify-content:center;gap:8px;padding:9px 8px;font-size:11px;text-align:center}}
+@media(max-width:550px){.workspace-primary-nav>[data-admin-nav]{flex-basis:76px;min-height:47px;padding:5px 3px;flex-direction:column;gap:2px;line-height:1.2;border-radius:8px;font-size:9px}.workspace-primary-nav>[data-admin-nav]>span{width:22px;height:22px;font-size:22px}}
 .worker-admin-header nav{display:flex;align-items:center;gap:18px}
 .worker-admin-header nav>a{color:#175bd6;font-size:13px;font-weight:650;text-decoration:none}
 .worker-admin-header nav>a:hover{text-decoration:underline}
