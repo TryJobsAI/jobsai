@@ -44,6 +44,7 @@
     setUserTag: (userTag, token) => request('/v1/user-tags/me', { method: 'PUT', token, body: { userTag } }),
     publicUserTag: userTag => request(`/v1/user-tags/${encodeURIComponent(userTag)}`),
     adminStatus: token => request('/v1/admin/me', { token }),
+    adminGasWallet: token => request('/v1/admin/gas-wallet', { token }),
     adminUsers: token => request('/v1/admin/users', { token }),
     addAdmin: (userTag, token) => request('/v1/admin/users', { method: 'POST', token, body: { userTag } }),
     removeAdmin: (userTag, token) => request(`/v1/admin/users/${encodeURIComponent(userTag)}`, { method: 'DELETE', token }),

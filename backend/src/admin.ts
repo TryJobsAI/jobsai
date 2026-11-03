@@ -4,6 +4,8 @@ import { requireAuth, requireTeamPassword } from "./auth.js";
 import { db } from "./db/index.js";
 import { ApiError, asyncRoute } from "./http.js";
 import { userTagSchema } from "./user-tags.js";
+import { formatEther } from "viem";
+import { gasWalletAddress, publicClient } from "./escrow.js";
 
 export async function requireAdmin(request: Request, _response: Response, next: NextFunction) {
   try {
@@ -22,6 +24,15 @@ adminRouter.get("/me", asyncRoute(async (request, response) => {
   response.json({ data: { isAdmin: result.rows[0]?.is_admin ?? false, userTag: result.rows[0]?.user_tag ?? null } });
 }));
 adminRouter.use(requireAdmin, requireTeamPassword);
+
+adminRouter.get("/gas-wallet", asyncRoute(async (_request, response) => {
+  try {
+    const balanceWei = await publicClient.getBalance({ address: gasWalletAddress });
+    response.json({ data: { address: gasWalletAddress, balanceWei: balanceWei.toString(), balanceEth: formatEther(balanceWei) } });
+  } catch {
+    response.json({ data: { address: gasWalletAddress, balanceWei: null, balanceEth: null } });
+  }
+}));
 
 adminRouter.get("/users", asyncRoute(async (_request, response) => {
   const result = await db.query<{ user_tag: string; wallet_address: string; created_at: Date }>(

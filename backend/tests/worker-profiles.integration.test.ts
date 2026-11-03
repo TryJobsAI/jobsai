@@ -77,10 +77,15 @@ dbTest("worker profiles require review, publish safely, expose completed work me
     expect((await call("/v1/admin/me", { token: outsiderToken })).body.data.isAdmin).toBe(false);
     expect((await call("/v1/admin/worker-applications", { token: outsiderToken })).status).toBe(403);
     expect((await call("/v1/admin/users", { token: workerToken })).body.error.code).toBe("team_password_required");
+    expect((await call("/v1/admin/gas-wallet", { token: workerToken })).body.error.code).toBe("team_password_required");
     const teamLogin = await call("/v1/team/auth/login", { token: workerToken, method: "POST", body: { password: process.env.JOBSAI_TEAM_PASSWORD } });
     expect(teamLogin.status).toBe(200);
     const adminCookie = teamLogin.cookies.map(value => value.split(";")[0]).filter(value => value.startsWith("jobsai_team_session=") && value.length > "jobsai_team_session=".length).at(-1);
     expect(adminCookie).toBeTruthy();
+    const gasWallet = await call("/v1/admin/gas-wallet", { token: workerToken, cookie: adminCookie });
+    expect(gasWallet.status).toBe(200);
+    expect(gasWallet.body.data.address).toMatch(/^0x[0-9a-f]{40}$/);
+    expect(gasWallet.body.data.balanceWei === null || /^\d+$/.test(gasWallet.body.data.balanceWei)).toBe(true);
 
     const addedAdmin = await call("/v1/admin/users", { token: workerToken, cookie: adminCookie, method: "POST", body: { userTag: clientTag } });
     expect(addedAdmin.status).toBe(201);

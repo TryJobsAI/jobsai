@@ -102,6 +102,27 @@
     });
     section.append(form, list); return section;
   }
+  function renderGasWallet(wallet) {
+    const section = el('section', undefined, 'worker-admin-card admin-gas-wallet-card');
+    const heading = el('div', undefined, 'admin-gas-wallet-heading');
+    const copy = el('div');
+    copy.append(el('span', 'GAS WALLET', 'eyebrow'), el('h2', 'Transaction gas'), el('p', 'Fund this address with ETH on Robinhood Chain to keep job operations running.'));
+    const balance = el('strong', wallet.balanceEth === null ? 'Balance unavailable' : `${wallet.balanceEth} ETH`, 'admin-gas-wallet-balance');
+    heading.append(copy, balance);
+    const addressRow = el('div', undefined, 'admin-gas-wallet-address');
+    const address = el('code', wallet.address);
+    const actions = el('div', undefined, 'admin-gas-wallet-actions');
+    const copyButton = el('button', 'Copy address', 'pill outline'); copyButton.type = 'button';
+    copyButton.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(wallet.address); feedback('Address copied', 'The gas wallet address is ready to paste.', 'success'); }
+      catch { feedback('Could not copy address', 'Select and copy the gas wallet address manually.', 'error'); }
+    });
+    const refresh = el('button', 'Refresh balance', 'pill outline'); refresh.type = 'button'; refresh.addEventListener('click', loadAll);
+    actions.append(copyButton, refresh);
+    addressRow.append(address, actions);
+    section.append(heading, addressRow);
+    return section;
+  }
   function renderQueue(profiles) {
     const section = el('section', undefined, 'worker-admin-card admin-review-card');
     const heading = el('div', undefined, 'worker-admin-title');
@@ -153,14 +174,14 @@
       const retry = el('button', 'Try again', 'pill primary'); retry.addEventListener('click', loadAll); card.append(retry); gateRoot.append(card); return;
     }
     gateRoot.hidden = true; adminWorkspace.hidden = false; signout.hidden = false;
-    const [usersResult, applicationsResult] = await Promise.all([
-      JobsAIAPI.adminUsers(session.token), JobsAIAPI.workerApplications(session.token),
+    const [gasWalletResult, usersResult, applicationsResult] = await Promise.all([
+      JobsAIAPI.adminGasWallet(session.token), JobsAIAPI.adminUsers(session.token), JobsAIAPI.workerApplications(session.token),
     ]);
     root.replaceChildren();
     const heading = el('div', undefined, 'worker-admin-title');
     heading.append(el('div', undefined));
     heading.firstChild.append(el('span', 'JOBSAI ADMIN', 'eyebrow'), el('h1', 'Admin'), el('p', 'Manage worker reviews and admin access.'));
-    root.append(heading, renderAdminList(usersResult.data || []), renderQueue(applicationsResult.data || []));
+    root.append(heading, renderGasWallet(gasWalletResult.data), renderAdminList(usersResult.data || []), renderQueue(applicationsResult.data || []));
   }
   function review(profile, value) {
     selected = profile; decision = value; note.value = '';
