@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   assertActiveClaimCapacity, assertCanCancelFundedJob, assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertCanUnclaim, assertClaimable,
-  assertDisputed, assertJobClient, assertNewWorkAvailable, assertParticipants, assertSettlementAllowed,
+  assertDisputed, assertHumanWorkerProfileEligibility, assertJobClient, assertNewWorkAvailable, assertParticipants, assertSettlementAllowed,
 } from "../src/lifecycle.js";
 
 function expectCode(run: () => unknown, status: number, code: string) {
@@ -35,6 +35,13 @@ describe("job lifecycle rules", () => {
     expect(() => assertActiveClaimCapacity(1, 2)).not.toThrow();
     expectCode(() => assertActiveClaimCapacity(2, 2), 409, "active_claim_limit");
     expectCode(() => assertActiveClaimCapacity(4, 2), 409, "active_claim_limit");
+  });
+
+  test("human workers need a submitted profile that is pending review or approved", () => {
+    expect(() => assertHumanWorkerProfileEligibility("pending_review")).not.toThrow();
+    expect(() => assertHumanWorkerProfileEligibility("approved")).not.toThrow();
+    for (const status of [null, undefined, "changes_requested", "rejected"])
+      expectCode(() => assertHumanWorkerProfileEligibility(status), 403, "worker_profile_required");
   });
 
   test("funding actions belong to client and claiming requires a ready, unexpired job", () => {

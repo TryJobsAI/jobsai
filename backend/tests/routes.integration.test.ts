@@ -166,6 +166,22 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
     expect(pausedClaim.status).toBe(503);
     config.PAUSE_NEW_WORK = false;
 
+    const unprofiledClaim = await request(`/v1/jobs/${first}/claim`, doerToken, {});
+    expect(unprofiledClaim.status).toBe(403);
+    expect(unprofiledClaim.body.error.code).toBe("worker_profile_required");
+    for (const [userId, suffix, status] of [
+      [idsByWallet.get(doerWallet), "worker", "pending_review"],
+      [idsByWallet.get(disputeDoerWallet), "dispute-worker", "approved"],
+      [idsByWallet.get(recoveryDoerWallet), "recovery-worker", "pending_review"],
+    ] as const) {
+      await db.query(
+        `INSERT INTO worker_profiles(user_id,slug,full_name,country,time_zone,work_hours,email,phone,rate_tiers,status)
+         VALUES($1,$2,$3,'Ghana','Africa/Accra','Weekdays','worker@example.com','+233201234567',
+           '[{"name":"Standard","scope":"General work","asset":"eth","amount":"0.01"}]'::jsonb,$4)`,
+        [userId, `${suffix}-${randomUUID().slice(0, 8)}`, suffix, status],
+      );
+    }
+
     expect((await request(`/v1/jobs/${first}/claim`, doerToken, {})).status).toBe(200);
     const doerJobs = await get("/v1/jobs/mine", doerToken);
     expect(doerJobs.body.data).toEqual(expect.arrayContaining([expect.objectContaining({ id: first, doerUserTag: workerTag, clientUserTag: clientTag })]));

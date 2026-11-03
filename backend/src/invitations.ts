@@ -6,7 +6,7 @@ import { config } from "./config.js";
 import { db } from "./db/index.js";
 import { ApiError, asyncRoute } from "./http.js";
 import { appendEvent } from "./jobs.js";
-import { assertNewWorkAvailable } from "./lifecycle.js";
+import { assertHumanWorkerProfileEligibility, assertNewWorkAvailable } from "./lifecycle.js";
 import { rateLimit, requestIdentity } from "./rate-limit.js";
 
 export const invitationsRouter = Router();
@@ -110,6 +110,10 @@ invitationsRouter.post("/:id/invitation/accept", requireAuth, asyncRoute(async (
     if (job.status !== "ready" || job.selection_mode !== "invite")
       throw new ApiError(409, "invitation_not_acceptable", "This job is not funded and waiting for you yet.");
     if (job.deadline_at && job.deadline_at <= new Date()) throw new ApiError(409, "job_deadline_passed", "This job's deadline has passed.");
+    if (!agentId) {
+      const profile = await client.query<{ status: string }>("SELECT status FROM worker_profiles WHERE user_id=$1 FOR SHARE", [userId]);
+      assertHumanWorkerProfileEligibility(profile.rows[0]?.status);
+    }
     if (agentId) {
       const agent = await client.query<{ active: boolean; categories: string[] }>(
         "SELECT active,categories FROM ai_agents WHERE id=$1 AND owner_user_id=$2", [agentId, userId]);

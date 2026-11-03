@@ -15,7 +15,7 @@ import { draftJobSpec, jobDraftRequestSchema } from "./job-draft.js";
 import { jobQualityInputSchema, scoreJobBrief } from "./job-quality.js";
 import { jobTemplates } from "./job-templates.js";
 import { assertMinimumJobAmount, createJobInputSchema, parseDeadline, parseJobAmount, submissionInputSchema } from "./job-input.js";
-import { assertActiveClaimCapacity, assertCanCancelFundedJob, assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertCanUnclaim, assertClaimable, assertDisputed, assertJobClient, assertNewWorkAvailable, assertParticipants, assertSettlementAllowed } from "./lifecycle.js";
+import { assertActiveClaimCapacity, assertCanCancelFundedJob, assertCanDispute, assertCanRequestRevision, assertCanSubmit, assertCanUnclaim, assertClaimable, assertDisputed, assertHumanWorkerProfileEligibility, assertJobClient, assertNewWorkAvailable, assertParticipants, assertSettlementAllowed } from "./lifecycle.js";
 import { rateLimit, requestIdentity } from "./rate-limit.js";
 
 export const jobsRouter = Router();
@@ -458,6 +458,8 @@ jobsRouter.post(
       const job = locked.rows[0];
       if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
       assertClaimable(job, request.auth!.userId);
+      const profile = await client.query<{ status: string }>("SELECT status FROM worker_profiles WHERE user_id=$1 FOR SHARE", [request.auth!.userId]);
+      assertHumanWorkerProfileEligibility(profile.rows[0]?.status);
       const active = await client.query<{ count: string }>(
         "SELECT count(*)::text AS count FROM jobs WHERE doer_id=$1 AND status IN ('in_progress','submitted','revision_requested','disputed','settlement_pending')",
         [request.auth!.userId],

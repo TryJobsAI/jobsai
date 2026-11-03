@@ -58,6 +58,9 @@ dbTest("clients invite a specific worker and only that wallet can take the job",
     expect((await call(`/v1/jobs/${jobId}/invitation/accept`, firstInviteeSession, "POST", {})).body.error.code).toBe("invitation_not_acceptable");
     // Seed a verified deposit; this test never broadcasts chain transactions.
     await db.query("UPDATE jobs SET status='ready',funding_tx_hash=$2,funded_at=now() WHERE id=$1", [jobId, `0x${randomBytes(32).toString("hex")}`]);
+    const missingProfileAccept = await call(`/v1/jobs/${jobId}/invitation/accept`, firstInviteeSession, "POST", {});
+    expect(missingProfileAccept.status).toBe(403);
+    expect(missingProfileAccept.body.error.code).toBe("worker_profile_required");
 
     expect((await call("/v1/jobs/ready", null)).body.data.map((job: { id: string }) => job.id)).not.toContain(jobId);
     const agent = await call("/v1/agents", strangerSession, "POST", { name: "Lingo", description: "Translates menus.", categories: ["writing"], capabilities: [], expiresInDays: 30 });
@@ -94,6 +97,15 @@ dbTest("clients invite a specific worker and only that wallet can take the job",
     expect((await call(`/v1/jobs/${jobId}/open`, firstInviteeSession, "POST", { selectionMode: "claim" })).status).toBe(403);
     expect((await call(`/v1/jobs/${jobId}/open`, clientSession, "POST", { selectionMode: "claim" })).body.data.selectionMode).toBe("claim");
     expect((await call("/v1/jobs/ready", null)).body.data.map((job: { id: string }) => job.id)).toContain(jobId);
+    const missingProfileClaim = await call(`/v1/jobs/${jobId}/claim`, firstInviteeSession, "POST", {});
+    expect(missingProfileClaim.status).toBe(403);
+    expect(missingProfileClaim.body.error.code).toBe("worker_profile_required");
+    await db.query(
+      `INSERT INTO worker_profiles(user_id,slug,full_name,country,time_zone,work_hours,email,phone,rate_tiers,status)
+       VALUES($1,$2,'Human Invitee','Ghana','Africa/Accra','Weekdays','invitee@example.com','+233201234567',
+         '[{"name":"Standard","scope":"Writing work","asset":"eth","amount":"0.01"}]'::jsonb,'pending_review')`,
+      [firstInviteeId, `human-invitee-${randomBytes(4).toString("hex")}`],
+    );
     expect((await call(`/v1/jobs/${jobId}/claim`, firstInviteeSession, "POST", {})).body.data.status).toBe("in_progress");
     expect(await jobState(jobId)).toMatchObject({ doer_id: firstInviteeId, selection_mode: "claim" });
   } finally {

@@ -21,6 +21,12 @@ dbTest("clients choose a worker from proposals and the chosen worker gets the jo
     `INSERT INTO sessions(token_hash,user_id,expires_at) SELECT h,u,now()+interval '1 day' FROM unnest($1::text[],$2::uuid[]) AS t(h,u)`,
     [sessions.map((token) => hashSessionToken(token)), userIds],
   );
+  await db.query(
+    `INSERT INTO worker_profiles(user_id,slug,full_name,country,time_zone,work_hours,email,phone,rate_tiers,status)
+     VALUES($1,$2,'Human Proposer','Ghana','Africa/Accra','Weekdays','human@example.com','+233201234567',
+       '[{"name":"Standard","scope":"Writing work","asset":"eth","amount":"0.01"}]'::jsonb,'pending_review')`,
+    [humanId, `human-proposer-${randomBytes(4).toString("hex")}`],
+  );
   const server = app.listen(0, "127.0.0.1");
   const jobIds: string[] = [];
   try {

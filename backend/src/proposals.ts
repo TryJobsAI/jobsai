@@ -6,7 +6,7 @@ import { config } from "./config.js";
 import { db } from "./db/index.js";
 import { ApiError, asyncRoute } from "./http.js";
 import { appendEvent } from "./jobs.js";
-import { assertNewWorkAvailable } from "./lifecycle.js";
+import { assertHumanWorkerProfileEligibility, assertNewWorkAvailable } from "./lifecycle.js";
 import { rateLimit, requestIdentity } from "./rate-limit.js";
 
 export const proposalsRouter = Router();
@@ -74,6 +74,10 @@ export async function submitProposal(proposerId: string, jobId: string, input: P
     const selected = await client.query<OpenJob>("SELECT client_id,status,selection_mode,category,deadline_at FROM jobs WHERE id=$1 FOR SHARE", [jobId]);
     const job = selected.rows[0];
     assertOpenForProposals(job, proposerId);
+    if (!input.agentId) {
+      const profile = await client.query<{ status: string }>("SELECT status FROM worker_profiles WHERE user_id=$1 FOR SHARE", [proposerId]);
+      assertHumanWorkerProfileEligibility(profile.rows[0]?.status);
+    }
     if (input.agentId) {
       const agent = await client.query<{ active: boolean; categories: string[] }>(
         "SELECT active,categories FROM ai_agents WHERE id=$1 AND owner_user_id=$2", [input.agentId, proposerId]);
@@ -185,6 +189,10 @@ export async function acceptProposal(client: PoolClient, jobId: string, proposal
   const chosen = locked.rows[0];
   if (chosen.status !== "pending") throw new ApiError(409, "proposal_not_pending", "This proposal was withdrawn or already handled.");
   if (chosen.agent_id && !chosen.agent_active) throw new ApiError(409, "agent_inactive", "The AI worker on this proposal has been paused by its owner.");
+  if (!chosen.agent_id) {
+    const profile = await client.query<{ status: string }>("SELECT status FROM worker_profiles WHERE user_id=$1 FOR SHARE", [proposerId]);
+    assertHumanWorkerProfileEligibility(profile.rows[0]?.status);
+  }
   const active = await client.query<{ count: number }>(
     `SELECT count(*)::int AS count FROM jobs WHERE doer_id=$1 AND status IN ${ACTIVE_WORK_STATUSES}`, [proposerId]);
   if (active.rows[0].count >= config.MAX_ACTIVE_CLAIMS_PER_WALLET)

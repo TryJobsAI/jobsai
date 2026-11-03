@@ -24,6 +24,11 @@ export function assertActiveClaimCapacity(activeClaims: number, maxActiveClaims:
     throw new ApiError(409, "active_claim_limit", `You already have ${activeClaims} active claimed jobs. Complete or unclaim one before claiming more.`);
 }
 
+export function assertHumanWorkerProfileEligibility(status: string | null | undefined) {
+  if (status !== "approved" && status !== "pending_review")
+    throw new ApiError(403, "worker_profile_required", "Submit a worker profile for review before taking a job. You can start as soon as its status is pending review or approved.");
+}
+
 export function assertCanCancelFundedJob(job: { client_id: string; status: string }, actorId: string) {
   if (job.client_id !== actorId)
     throw new ApiError(403, "client_only", "Only the client can cancel this job.");

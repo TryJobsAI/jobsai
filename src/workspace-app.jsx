@@ -289,17 +289,19 @@ function FundedJobs({ session }) {
   const [agents, setAgents] = useState([]);
   const [invitations, setInvitations] = useState([]);
   const [invitationAgent, setInvitationAgent] = useState({});
+  const [workerProfileStatus, setWorkerProfileStatus] = useState('loading');
   const [feedback, setFeedback] = useState({ title: 'Loading funded jobs', message: 'Checking for currently funded work…', kind: 'loading' });
   const [jobInfo, setJobInfo] = useState(null);
 
   async function refresh() {
     setFeedback({ title: 'Loading funded jobs', message: 'Checking for currently funded work…', kind: 'loading' });
     try {
-      const [response, proposalResponse, agentResponse, invitationResponse] = await Promise.all([
+      const [response, proposalResponse, agentResponse, invitationResponse, profileResponse] = await Promise.all([
         JobsAIAPI.readyJobs(),
         JobsAIAPI.myProposals(session.token).catch(() => ({ data: [] })),
         JobsAIAPI.myAgents(session.token).catch(() => ({ data: [] })),
         JobsAIAPI.myInvitations(session.token).catch(() => ({ data: [] })),
+        JobsAIAPI.workerProfile(session.token).catch(() => ({ data: null })),
       ]);
       const ready = Array.isArray(response?.data) ? response.data : [];
       const invited = invitationResponse?.data || [];
@@ -307,13 +309,25 @@ function FundedJobs({ session }) {
       setJobs(ready);
       setMyProposals(Object.fromEntries((proposalResponse?.data || []).map(item => [item.jobId, item])));
       setAgents((agentResponse?.data || []).filter(agent => agent.active));
+      setWorkerProfileStatus(profileResponse?.data?.status || 'missing');
       setFeedback(ready.length || invited.length ? null : { title: 'No funded jobs are ready', message: 'Check again later or refresh to look for newly funded work.', kind: 'info' });
     } catch (error) { setJobs([]); setFeedback({ title: 'Could not load funded jobs', message: error.message || 'JobsAI could not load funded jobs.', kind: 'error' }); }
   }
 
   useEffect(() => { refresh(); }, []);
 
+  const workerProfileEligible = ['approved', 'pending_review'].includes(workerProfileStatus);
+  function requestWorkerProfile() {
+    setFeedback({
+      title: 'Set up your worker profile first',
+      message: 'To take a job as a human, submit your worker profile for review. You can claim work while it is pending review; you do not need to wait for approval.',
+      kind: 'info',
+      openTab: 'profile',
+    });
+  }
+
   async function claim(job) {
+    if (!workerProfileEligible) { requestWorkerProfile(); return; }
     setBusy(job.id);
     setFeedback({ title: 'Claiming job', message: 'Assigning this job to your wallet…', kind: 'loading' });
     try {
@@ -321,11 +335,15 @@ function FundedJobs({ session }) {
       setJobs(current => current.filter(item => item.id !== job.id));
       document.dispatchEvent(new Event('jobsai:work-updated'));
       setFeedback({ title: 'Job claimed', message: 'This job is now assigned to your wallet.', kind: 'success' });
-    } catch (error) { setFeedback({ title: 'Could not claim job', message: error.message || 'The job could not be claimed.', kind: 'error' }); }
+    } catch (error) {
+      if (error.code === 'worker_profile_required') requestWorkerProfile();
+      else setFeedback({ title: 'Could not claim job', message: error.message || 'The job could not be claimed.', kind: 'error' });
+    }
     finally { setBusy(''); }
   }
 
   async function sendProposal(input) {
+    if (!input.agentId && !workerProfileEligible) { setProposing(null); requestWorkerProfile(); return; }
     const job = proposing;
     setBusy(job.id);
     try {
@@ -335,16 +353,20 @@ function FundedJobs({ session }) {
       if (isNew) setJobs(current => current.map(item => item.id === job.id ? { ...item, proposalCount: (item.proposalCount || 0) + 1 } : item));
       setProposing(null);
       setFeedback({ title: isNew ? 'Proposal sent' : 'Proposal updated', message: 'The client will compare proposals and choose one worker. If they choose yours, the job appears in My work, already assigned to you.', kind: 'success' });
-    } catch (error) { setFeedback({ title: 'Could not send proposal', message: error.message || 'JobsAI could not send this proposal.', kind: 'error' }); }
+    } catch (error) {
+      if (error.code === 'worker_profile_required') { setProposing(null); requestWorkerProfile(); }
+      else setFeedback({ title: 'Could not send proposal', message: error.message || 'JobsAI could not send this proposal.', kind: 'error' });
+    }
     finally { setBusy(''); }
   }
 
   async function respondToInvitation(invitation, accept) {
     const job = invitation.job;
+    const agentId = invitationAgent[job.id];
+    if (accept && !agentId && !workerProfileEligible) { requestWorkerProfile(); return; }
     setBusy(job.id);
     setFeedback({ title: accept ? 'Accepting the invitation' : 'Declining the invitation', message: accept ? 'Assigning this job to you…' : 'Letting the client know…', kind: 'loading' });
     try {
-      const agentId = invitationAgent[job.id];
       if (accept) await JobsAIAPI.acceptInvitation(job.id, agentId, session.token);
       else await JobsAIAPI.declineInvitation(job.id, session.token);
       setInvitations(current => current.filter(item => item.id !== invitation.id));
@@ -353,7 +375,10 @@ function FundedJobs({ session }) {
       setFeedback(accept
         ? { title: 'Invitation accepted', message: agent ? `AI worker ${agent.name} now has this job and will pick it up from its assigned jobs.` : 'The job is now assigned to you. Find it in My work to submit when it is ready.', kind: 'success' }
         : { title: 'Invitation declined', message: 'The client can invite someone else or open the job to every worker. The escrow stays with the client.', kind: 'success' });
-    } catch (error) { setFeedback({ title: 'Could not respond to the invitation', message: error.message || 'JobsAI could not update this invitation.', kind: 'error' }); }
+    } catch (error) {
+      if (error.code === 'worker_profile_required') requestWorkerProfile();
+      else setFeedback({ title: 'Could not respond to the invitation', message: error.message || 'JobsAI could not update this invitation.', kind: 'error' });
+    }
     finally { setBusy(''); }
   }
 
@@ -391,7 +416,7 @@ function FundedJobs({ session }) {
         ? <button className="pill primary live-job-claim" disabled={!!busy || ['accepted', 'released'].includes(myProposals[job.id]?.status) || job.clientWallet?.toLowerCase() === session.walletAddress?.toLowerCase()} onClick={() => setProposing(job)}>{myProposals[job.id]?.status === 'pending' ? 'Edit proposal' : 'Send proposal'}</button>
         : <button className="pill primary live-job-claim" disabled={!!busy} onClick={() => claim(job)}>Claim job</button>}</div>
     </article>)}</div>
-    {feedback && <div className="workspace-overlay" role="presentation"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="workspace-modal-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="workspace-modal-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
+    {feedback && <div className="workspace-overlay" role="presentation"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="workspace-modal-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="workspace-modal-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <div className="workflow-dialog-actions">{feedback.openTab && <button className="pill outline" data-open-tab={feedback.openTab} onClick={() => setFeedback(null)}>Complete work profile</button>}<button className="pill primary" onClick={() => setFeedback(null)}>Got it</button></div>}</section></div>}
     <InformationDialog info={jobInfo} onClose={() => setJobInfo(null)} />
     {proposing && <ProposalDialog job={proposing} agents={agents} existing={myProposals[proposing.id]} busy={busy === proposing.id} onClose={() => setProposing(null)} onSend={sendProposal} onWithdraw={withdrawProposal} />}
   </>;
@@ -1122,6 +1147,7 @@ function WorkerProfilePanel({ session }) {
     try {
       const response = await JobsAIAPI.submitWorkerProfile(form, session.token);
       setProfile(response.data);
+      document.dispatchEvent(new Event('jobsai:work-updated'));
       setFeedback({ title: 'Profile sent for review', message: 'Your profile is private while the JobsAI team reviews it. We’ll show its public page and blue badge after approval.', kind: 'success' });
     } catch (error) { setFeedback({ title: 'Profile could not be submitted', message: error.message || 'JobsAI could not save your profile.', kind: 'error' }); }
     finally { setBusy(false); }
