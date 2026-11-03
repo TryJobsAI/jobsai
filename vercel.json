@@ -68,6 +68,14 @@
       "destination": "https://jobsai-api.onrender.com/v1/user-tags/:path*"
     },
     {
+      "source": "/api/jobsai/v1/activity",
+      "destination": "https://jobsai-api.onrender.com/v1/activity"
+    },
+    {
+      "source": "/api/jobsai/v1/activity/:path*",
+      "destination": "https://jobsai-api.onrender.com/v1/activity/:path*"
+    },
+    {
       "source": "/api/jobsai/v1/admin/:path*",
       "destination": "https://jobsai-api.onrender.com/v1/admin/:path*"
     },

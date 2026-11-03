@@ -28,7 +28,7 @@ export async function proxyJobsAI(request) {
   const incoming = new URL(request.url);
   if (!incoming.pathname.startsWith(`${API_PREFIX}/`)) return json(404, "not_found", "This endpoint does not exist.");
   const apiPath = incoming.pathname.slice(API_PREFIX.length);
-  if (!(AUTH_ROUTES.has(apiPath) || apiPath === "/v1/jobs" || apiPath.startsWith("/v1/jobs/") || apiPath === "/v1/services" || apiPath.startsWith("/v1/services/") || apiPath === "/v1/webhooks" || apiPath.startsWith("/v1/webhooks/") || apiPath.startsWith("/v1/team/") || apiPath.startsWith("/v1/workers/") || apiPath.startsWith("/v1/user-tags/") || apiPath.startsWith("/v1/admin/") || apiPath.startsWith("/v1/buyer/") || apiPath === "/v1/media/images" || apiPath === "/v1/speech/transcribe"))
+  if (!(AUTH_ROUTES.has(apiPath) || apiPath === "/v1/jobs" || apiPath.startsWith("/v1/jobs/") || apiPath === "/v1/services" || apiPath.startsWith("/v1/services/") || apiPath === "/v1/webhooks" || apiPath.startsWith("/v1/webhooks/") || apiPath === "/v1/activity" || apiPath.startsWith("/v1/activity/") || apiPath.startsWith("/v1/team/") || apiPath.startsWith("/v1/workers/") || apiPath.startsWith("/v1/user-tags/") || apiPath.startsWith("/v1/admin/") || apiPath.startsWith("/v1/buyer/") || apiPath === "/v1/media/images" || apiPath === "/v1/speech/transcribe"))
     return json(404, "not_found", "This endpoint does not exist.");
 
   if (apiPath === "/v1/media/images" && (method !== "POST" || !IMAGE_CONTENT_TYPES.has((request.headers.get("content-type") || "").split(";")[0].trim().toLowerCase())))
