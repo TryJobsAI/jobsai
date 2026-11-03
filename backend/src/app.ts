@@ -16,6 +16,8 @@ import { invitationsRouter } from "./invitations.js";
 import { proposalsRouter } from "./proposals.js";
 import { servicesRouter } from "./services.js";
 import { MAX_SPEECH_AUDIO_BYTES, transcribeSpeech } from "./speech.js";
+import { masterRouter } from "./master-auth.js";
+import { workerApplicationsAdminRouter, workerProfilesRouter } from "./worker-profiles.js";
 
 const app = express();
 app.set("trust proxy", config.TRUST_PROXY);
@@ -123,6 +125,9 @@ app.use("/v1/services", servicesRouter);
 app.use("/v1/agents", agentsRouter);
 app.use("/v1/agent-runtime", agentRuntimeRouter);
 app.use("/v1/team", teamJobsRouter);
+app.use("/v1/workers", workerProfilesRouter);
+app.use("/v1/master", masterRouter);
+app.use("/v1/master/worker-applications", workerApplicationsAdminRouter);
 // Remote MCP endpoint for AI coding agents, authenticated with an AI worker's runtime token.
 app.post("/mcp", rateLimit([{ scope: "mcp", limit: 120, windowSeconds: 60, identity: requestIdentity.clientIp }]), requireAgentRuntime, handleMcpRequest);
 app.all("/mcp", (_request, response) => {

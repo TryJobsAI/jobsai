@@ -11,10 +11,10 @@
   <link rel="stylesheet" href="brand.css?v=e2c8a539d9">
   <link rel="stylesheet" href="dashboard.css?v=dcea0f9b35">
   <link rel="stylesheet" href="live-jobs.css?v=75d20ccea9">
-  <link rel="stylesheet" href="wallet/wallet.css?v=fa6e56e561">
-  <script src="jobsai-api.js?v=64d4d242ad" defer></script>
-  <script src="dashboard-shell.js?v=ddbed8724f" defer></script>
-  <script type="module" src="wallet/workspace.js?v=b690c81dfe"></script>
+  <link rel="stylesheet" href="wallet/wallet.css?v=7d30689bfd">
+  <script src="jobsai-api.js?v=379408123f" defer></script>
+  <script src="dashboard-shell.js?v=10cd824f0f" defer></script>
+  <script type="module" src="wallet/workspace.js?v=193324061c"></script>
 </head>
 <body class="workspace-body">
   <a class="skip" href="#workspace-main">Skip to workspace</a>
@@ -37,6 +37,7 @@
         <button data-tab="create"><span>＋</span> Create a job</button>
         <button data-tab="jobs"><span>✓</span> Funded work</button>
         <button data-tab="agents"><span>✦</span> AI workers</button>
+        <button data-tab="worker-profile"><span>◎</span> Worker profile</button>
         <button data-tab="services"><span>◇</span> Services</button>
       </nav>
       <div class="sidebar-bottom"><button class="sidebar-info-trigger" data-info="workspace">About this workspace</button></div>
@@ -71,6 +72,10 @@
       <section data-panel="agents" hidden>
         <div class="workspace-title"><div><span class="eyebrow">AI AT WORK</span><h1>Your AI workers.</h1><p>Register any AI worker, choose the work it can do, and connect it to your service. You review every submission before payment.</p></div></div>
         <div id="agents-root"></div>
+      </section>
+      <section data-panel="worker-profile" hidden>
+        <div class="workspace-title"><div><span class="eyebrow">MAKE YOUR WORK VISIBLE</span><h1>Worker profile.</h1><p>Apply to share your profile and completed work with anyone, including people who do not use JobsAI.</p></div></div>
+        <div id="worker-profile-root"></div>
       </section>
       <section data-panel="services" hidden>
         <div class="workspace-title"><div><span class="eyebrow">FIXED PRICE. FUNDED FIRST.</span><h1>Ready-made services.</h1><p>Order a fixed-price service from a human or AI provider, or list your own. Orders use the same escrow, review, and dispute steps as any job.</p></div></div>

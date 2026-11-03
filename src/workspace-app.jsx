@@ -1018,6 +1018,70 @@ function ServicesPanel({ session }) {
   </section>;
 }
 
+function elapsedLabel(seconds) {
+  if (seconds == null) return 'Not enough completed work yet';
+  if (seconds < 60) return 'Under a minute';
+  if (seconds < 3600) return `${Math.round(seconds / 60)} minutes`;
+  if (seconds < 86_400) return `${(seconds / 3600).toFixed(1)} hours`;
+  return `${(seconds / 86_400).toFixed(1)} days`;
+}
+
+function WorkerProfilePanel({ session }) {
+  const [profile, setProfile] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+  const blankTier = () => ({ name: '', scope: '', asset: 'usdg', amount: '' });
+  const [form, setForm] = useState({ fullName: '', country: '', timeZone: '', workHours: '', email: '', phone: '', publicProfile: true, rateTiers: [blankTier()] });
+  useEffect(() => {
+    let active = true;
+    JobsAIAPI.workerProfile(session.token).then(response => {
+      if (!active) return;
+      const value = response?.data || null;
+      setProfile(value);
+      if (value) setForm({ fullName: value.fullName, country: value.country, timeZone: value.timeZone, workHours: value.workHours, email: value.email, phone: value.phone, publicProfile: value.publicProfile, rateTiers: value.rateTiers });
+    }).catch(error => {
+      if (active) setFeedback({ title: 'Could not load your worker profile', message: error.message || 'JobsAI could not retrieve your profile.', kind: 'error' });
+    }).finally(() => { if (active) setLoaded(true); });
+    return () => { active = false; };
+  }, [session.token]);
+  function change(name, value) { setForm(current => ({ ...current, [name]: value })); }
+  function changeTier(index, name, value) { setForm(current => ({ ...current, rateTiers: current.rateTiers.map((tier, i) => i === index ? { ...tier, [name]: value } : tier) })); }
+  async function save(event) {
+    event.preventDefault();
+    setBusy(true); setFeedback({ title: 'Sending your profile for review', message: 'Saving your details and adding your application to the JobsAI review queue…', kind: 'loading' });
+    try {
+      const response = await JobsAIAPI.submitWorkerProfile(form, session.token);
+      setProfile(response.data);
+      setFeedback({ title: 'Profile sent for review', message: 'Your profile is private while the JobsAI team reviews it. We’ll show its public page and blue badge after approval.', kind: 'success' });
+    } catch (error) { setFeedback({ title: 'Profile could not be submitted', message: error.message || 'JobsAI could not save your profile.', kind: 'error' }); }
+    finally { setBusy(false); }
+  }
+  async function shareProfile() {
+    const url = new URL(`worker.html?slug=${encodeURIComponent(profile.slug)}`, location.href).href;
+    try { await navigator.clipboard.writeText(url); setFeedback({ title: 'Profile link copied', message: url, kind: 'success' }); }
+    catch { setFeedback({ title: 'Your public profile link', message: url, kind: 'info' }); }
+  }
+  if (!loaded) return <section className="worker-profile-panel"><p>Loading your profile…</p></section>;
+  return <section className="worker-profile-panel" aria-labelledby="worker-profile-title">
+    <div className="created-jobs-heading"><div><span className="eyebrow">YOUR PUBLIC WORK PROFILE</span><h2 id="worker-profile-title">Worker profile</h2><p>Share your availability and rates. Your email and phone number are sent to JobsAI for review and are never shown on your public page.</p></div>{profile?.status === 'approved' && <span className="worker-verified-badge">✓ JobsAI approved</span>}</div>
+    {profile && <><div className="worker-profile-stats"><article><span>Completed jobs</span><strong>{profile.completedJobs}</strong></article><article><span>Median time to first submission</span><strong>{elapsedLabel(profile.medianFirstDeliverySeconds)}</strong><small>For completed jobs only. This measures delivery speed, not quality.</small></article></div>
+      <div className="worker-profile-status"><strong>Profile status: {profile.status.replaceAll('_', ' ')}</strong>{profile.reviewNote && <p>{profile.reviewNote}</p>}{profile.status === 'approved' && profile.publicProfile && <button className="pill outline" type="button" onClick={shareProfile}>Copy public profile link</button>}</div>
+      <section className="worker-history"><h3>Completed work</h3>{profile.completedJobHistory?.length ? <ul>{profile.completedJobHistory.map(job => <li key={job.id}><strong>{job.title}</strong><span>{job.category.replaceAll('_', ' ')} · {job.completedAt ? new Date(job.completedAt).toLocaleDateString() : 'Completed'}</span></li>)}</ul> : <p>Completed jobs will appear here after payment is settled.</p>}</section>
+    </>}
+    <form className="create-job-form worker-profile-form" onSubmit={save}>
+      <div className="create-job-form-heading"><span className="eyebrow">PROFILE DETAILS</span><h3>{profile ? 'Update your profile' : 'Set up your worker profile'}</h3><p>Submitting changes sends the profile back to the JobsAI team for review.</p></div>
+      <div className="create-job-payment-row"><label>Full name<input required minLength="2" maxLength="100" autoComplete="name" value={form.fullName} onChange={event => change('fullName', event.target.value)} /></label><label>Country<input required maxLength="100" autoComplete="country-name" value={form.country} onChange={event => change('country', event.target.value)} /></label></div>
+      <div className="create-job-payment-row"><label>Time zone<input required placeholder="Africa/Lagos" value={form.timeZone} onChange={event => change('timeZone', event.target.value)} /></label><label>Work hours<input required maxLength="500" placeholder="Weekdays, 09:00–17:00" value={form.workHours} onChange={event => change('workHours', event.target.value)} /></label></div>
+      <div className="create-job-payment-row"><label>Email for JobsAI review<input required type="email" maxLength="254" autoComplete="email" value={form.email} onChange={event => change('email', event.target.value)} /></label><label>Phone for JobsAI review<input required type="tel" maxLength="40" autoComplete="tel" value={form.phone} onChange={event => change('phone', event.target.value)} /></label></div>
+      <fieldset className="worker-rate-tiers"><legend>Rate tiers</legend>{form.rateTiers.map((tier, index) => <div className="worker-rate-tier" key={index}><div className="create-job-payment-row"><label>Tier name<input required maxLength="50" placeholder="Standard" value={tier.name} onChange={event => changeTier(index, 'name', event.target.value)} /></label><label>Rate amount<input required inputMode="decimal" maxLength="30" placeholder="15" value={tier.amount} onChange={event => changeTier(index, 'amount', event.target.value)} /></label></div><label>What this tier covers<textarea required maxLength="500" rows="2" value={tier.scope} onChange={event => changeTier(index, 'scope', event.target.value)} /></label><label>Payment asset<select value={tier.asset} onChange={event => changeTier(index, 'asset', event.target.value)}><option value="usdg">USDG</option><option value="eth">ETH</option></select></label>{form.rateTiers.length > 1 && <button type="button" className="text-info-button" onClick={() => setForm(current => ({ ...current, rateTiers: current.rateTiers.filter((_, i) => i !== index) }))}>Remove tier</button>}</div>)}{form.rateTiers.length < 8 && <button type="button" className="pill outline" onClick={() => setForm(current => ({ ...current, rateTiers: [...current.rateTiers, blankTier()] }))}>Add a rate tier</button>}</fieldset>
+      <label className="worker-public-toggle"><input type="checkbox" checked={form.publicProfile} onChange={event => change('publicProfile', event.target.checked)} /> Publish my profile and completed job history after JobsAI approves it</label>
+      <button className="pill primary" type="submit" disabled={busy}>{busy ? 'Submitting…' : 'Submit profile for review'}</button>
+    </form>
+    {feedback && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="worker-profile-feedback-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="worker-profile-feedback-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
+  </section>;
+}
+
 function WorkspaceContext() {
   const { address, chainId, isConnected, isReconnecting } = useAccount();
   const { disconnectAsync } = useDisconnect();
@@ -1028,6 +1092,7 @@ function WorkspaceContext() {
   const createJobRoot = document.getElementById('create-job-root');
   const agentsRoot = document.getElementById('agents-root');
   const servicesRoot = document.getElementById('services-root');
+  const workerProfileRoot = document.getElementById('worker-profile-root');
 
   useEffect(() => {
     if (!session?.token) { goToAuth(); return; }
@@ -1046,7 +1111,7 @@ function WorkspaceContext() {
     goToAuth();
   }
 
-  if (!header || !jobsRoot || !workRoot || !createJobRoot || !agentsRoot || !servicesRoot || !session?.token) return null;
+  if (!header || !jobsRoot || !workRoot || !createJobRoot || !agentsRoot || !servicesRoot || !workerProfileRoot || !session?.token) return null;
   return <>
     {createPortal(<><ConnectButton.Custom>{({ account, openAccountModal, mounted }) => <button className="workspace-account-button" onClick={openAccountModal} disabled={!mounted || !account} aria-label={`Connected wallet ${account?.displayName || ''}`}><span className="workspace-account-status" />{account?.displayName || 'Connected wallet'}</button>}</ConnectButton.Custom><button className="workspace-signout" onClick={signOut}>Sign out</button></>, header)}
     {createPortal(<FundedJobs session={session} />, jobsRoot)}
@@ -1054,6 +1119,7 @@ function WorkspaceContext() {
     {createPortal(<CreateJobPanel session={session} walletAddress={address} chainId={chainId} />, createJobRoot)}
     {createPortal(<AgentManagement session={session} />, agentsRoot)}
     {createPortal(<ServicesPanel session={session} />, servicesRoot)}
+    {createPortal(<WorkerProfilePanel session={session} />, workerProfileRoot)}
   </>;
 }
 
