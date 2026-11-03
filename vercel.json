@@ -20,6 +20,10 @@
       "destination": "/roadmap.html"
     },
     {
+      "source": "/u/:slug",
+      "destination": "/worker.html"
+    },
+    {
       "source": "/chunks/:path*",
       "destination": "/wallet/chunks/:path*"
     },

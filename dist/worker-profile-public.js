@@ -2,7 +2,8 @@
   const root = document.querySelector('#worker-public-root');
   const el = (tag, text, className) => { const node = document.createElement(tag); if (text != null) node.textContent = text; if (className) node.className = className; return node; };
   const params = new URLSearchParams(location.search);
-  const slug = params.get('slug');
+  const routeSlug = location.pathname.match(/^\/u\/([a-z0-9]+(?:-[a-z0-9]+)*)\/?$/)?.[1];
+  const slug = routeSlug || params.get('slug');
   const tag = params.get('tag');
   const loadProfile = slug
     ? JobsAIAPI.publicWorkerProfile(slug).then(({ data }) => renderProfile(data, data.userTag))

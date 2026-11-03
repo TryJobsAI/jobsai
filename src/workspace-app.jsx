@@ -1170,7 +1170,7 @@ function WorkerProfilePanel({ session }) {
     finally { setBusy(false); }
   }
   async function shareProfile() {
-    const url = new URL(`worker.html?slug=${encodeURIComponent(profile.slug)}`, location.href).href;
+    const url = new URL(`/u/${encodeURIComponent(profile.slug)}`, location.origin).href;
     try {
       if (navigator.share) await navigator.share({ title: `${profile.fullName} on JobsAI`, url });
       else await navigator.clipboard.writeText(url);
@@ -1178,12 +1178,13 @@ function WorkerProfilePanel({ session }) {
     }
     catch { setFeedback({ title: 'Your public profile link', message: url, kind: 'info' }); }
   }
+  const profileReviewLabel = { pending_review: 'Pending review', changes_requested: 'Changes requested', rejected: 'Not approved' };
   if (!loaded) return <section className="worker-profile-panel" aria-busy="true"><div className="worker-profile-loading" /></section>;
   return <section className="worker-profile-panel" aria-labelledby="worker-profile-title">
     <div className="created-jobs-heading"><div><span className="eyebrow">YOUR PUBLIC WORK PROFILE</span><h2 id="worker-profile-title">Worker profile</h2><p>Share your availability and rates. Your email and phone number are sent to JobsAI for review and are never shown on your public page.</p></div><div className="worker-profile-heading-actions">{profile?.status === 'approved' && <span className="worker-verified-badge">✓ JobsAI approved</span>}{profile?.status === 'approved' && profile.publicProfile && <button className="pill outline" type="button" onClick={shareProfile}>Share profile ↗</button>}</div></div>
     <div className="worker-profile-steps" aria-label="How to publish your worker profile"><article><span>01</span><div><strong>Complete your details</strong><p>Add your availability, contact details, and rate tiers.</p></div></article><article><span>02</span><div><strong>Send it for review</strong><p>The JobsAI team checks your application before it is published.</p></div></article><article><span>03</span><div><strong>Share your profile</strong><p>After approval, copy a public link and share it with anyone.</p></div></article></div>
     {profile && <><div className="worker-profile-stats"><article><span>Completed jobs</span><strong>{profile.completedJobs}</strong></article><article><span>Median time to first submission</span><strong>{elapsedLabel(profile.medianFirstDeliverySeconds)}</strong><small>For completed jobs only. This measures delivery speed, not quality.</small></article></div>
-      <div className="worker-profile-status"><strong>Profile status: {profile.status.replaceAll('_', ' ')}</strong>{profile.reviewNote && <p>{profile.reviewNote}</p>}</div>
+      {(profile.status !== 'approved' || profile.reviewNote) && <div className="worker-profile-status"><strong>{profileReviewLabel[profile.status] || 'Profile update needed'}</strong>{profile.reviewNote && <p>{profile.reviewNote}</p>}</div>}
       <section className="worker-history"><h3>Completed work</h3>{profile.completedJobHistory?.length ? <ul>{profile.completedJobHistory.map(job => <li key={job.id}><strong>{job.title}</strong><span>{job.category.replaceAll('_', ' ')} · {job.completedAt ? new Date(job.completedAt).toLocaleDateString() : 'Completed'}</span></li>)}</ul> : <p>Completed jobs will appear here after payment is settled.</p>}</section>
     </>}
     <form className="create-job-form worker-profile-form" onSubmit={save}>
