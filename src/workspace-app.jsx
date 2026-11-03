@@ -8,6 +8,9 @@ import { erc20Abi } from 'viem';
 import { JobsAIAPI, queryClient, readSession, robinhood, sessionKey, walletConfig } from './wallet-config.jsx';
 import './wallet-app.css';
 
+const WORK_CATEGORY_NAMES = { writing: 'Writing', translation: 'Translation', image_generation: 'Image generation', research: 'Research', design: 'Design', coding: 'Coding', data: 'Data', other: 'Other' };
+const workCategoryName = value => WORK_CATEGORY_NAMES[value] || String(value || 'other').replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+
 function InformationDialog({ info, onClose }) {
   const titleId = useId();
   if (!info) return null;
@@ -52,6 +55,7 @@ function MyWork({ session, walletAddress }) {
   const [feedback, setFeedback] = useState(null);
   const [dialog, setDialog] = useState(null);
   const [mediaInfo, setMediaInfo] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState('all');
 
   async function refresh(showLoading = true) {
     if (showLoading) setFeedback({ title: 'Refreshing your work', message: 'Loading jobs connected to this wallet…', kind: 'loading' });
@@ -162,14 +166,34 @@ function MyWork({ session, walletAddress }) {
   }
 
   const statusLabels = { in_progress: 'In progress', revision_requested: 'Revision requested', submitted: 'Submitted', disputed: 'Disputed', settlement_pending: 'Settlement pending', completed: 'Completed', refunded: 'Refunded' };
+  const categoryStats = Object.values(jobs.reduce((stats, job) => {
+    const key = job.category || 'other';
+    stats[key] ||= { key, total: 0, active: 0, completed: 0 };
+    stats[key].total++;
+    if (['in_progress', 'revision_requested'].includes(job.status)) stats[key].active++;
+    if (job.status === 'completed') stats[key].completed++;
+    return stats;
+  }, {})).sort((a, b) => b.total - a.total || workCategoryName(a.key).localeCompare(workCategoryName(b.key)));
+  const visibleJobs = selectedCategory === 'all' ? jobs : jobs.filter(job => (job.category || 'other') === selectedCategory);
+  const activeCount = jobs.filter(job => ['in_progress', 'revision_requested'].includes(job.status)).length;
+  const reviewCount = jobs.filter(job => ['submitted', 'disputed', 'settlement_pending'].includes(job.status)).length;
+  const completedCount = jobs.filter(job => job.status === 'completed').length;
   return <section className="my-work-section" aria-labelledby="my-work-title">
-    <div className="my-work-heading"><div><span className="eyebrow">CLAIMED AND CREATED JOBS</span><h2 id="my-work-title">My work</h2></div><button className="pill outline" onClick={() => refresh()} disabled={busy}>Refresh</button></div>
-    <div className="my-work-list">{jobs.map(job => {
+    <div className="my-work-heading"><div><span className="eyebrow">YOUR JOBS, BY CATEGORY</span><h2 id="my-work-title">My work</h2><p>See what you’re working on, what needs review, and where your completed work is concentrated.</p></div><button className="pill outline" onClick={() => refresh()} disabled={busy}>Refresh</button></div>
+    <div className="my-work-overview" aria-label="Work status summary"><article><span>Total jobs</span><strong>{jobs.length}</strong></article><article><span>In progress</span><strong>{activeCount}</strong></article><article><span>Needs attention</span><strong>{reviewCount}</strong></article><article><span>Completed</span><strong>{completedCount}</strong></article></div>
+    <div className="my-work-category-section"><div className="my-work-section-title"><h3>Categories</h3><span>{categoryStats.length ? `${categoryStats.length} ${categoryStats.length === 1 ? 'category' : 'categories'}` : 'No categories yet'}</span></div>
+      <div className="my-work-category-grid" role="group" aria-label="Filter work by category">
+        <button type="button" className={`my-work-category-card ${selectedCategory === 'all' ? 'selected' : ''}`} aria-pressed={selectedCategory === 'all'} onClick={() => setSelectedCategory('all')}><span className="my-work-category-name">All work</span><strong>{jobs.length}</strong><span className="my-work-category-detail">{activeCount} active · {completedCount} finished</span><span className="my-work-category-bar"><i style={{ width: jobs.length ? '100%' : '0%' }} /></span></button>
+        {categoryStats.map(item => <button type="button" key={item.key} className={`my-work-category-card ${selectedCategory === item.key ? 'selected' : ''}`} aria-pressed={selectedCategory === item.key} onClick={() => setSelectedCategory(item.key)}><span className="my-work-category-name">{workCategoryName(item.key)}</span><strong>{item.total}</strong><span className="my-work-category-detail">{item.active} active · {item.completed} finished</span><span className="my-work-category-bar"><i style={{ width: `${Math.max(8, Math.round(item.total / Math.max(jobs.length, 1) * 100))}%` }} /></span></button>)}
+      </div>
+    </div>
+    <div className="my-work-section-title my-work-jobs-title"><h3>{selectedCategory === 'all' ? 'All jobs' : workCategoryName(selectedCategory)}</h3><span>{visibleJobs.length} {visibleJobs.length === 1 ? 'job' : 'jobs'}</span></div>
+    {visibleJobs.length ? <div className="my-work-list">{visibleJobs.map(job => {
       const isDoer = job.doerWallet?.toLowerCase() === walletAddress?.toLowerCase();
       const isClient = job.clientWallet?.toLowerCase() === walletAddress?.toLowerCase();
       const canSubmit = isDoer && !job.doerAgent && ['in_progress', 'revision_requested'].includes(job.status);
       const canDispute = ['in_progress', 'revision_requested', 'submitted'].includes(job.status) && (isDoer || isClient);
-      return <article className="my-work-card" key={job.id}><div className="my-work-summary"><div><h3>{job.title}</h3><span className="my-work-status">{statusLabels[job.status] || job.status.replaceAll('_', ' ')}</span>{job.doerAgent && <span className="agent-work-badge">AI worker · {job.doerAgent.name}</span>}{job.claimExpiresAt && <small>Claim expires {new Date(job.claimExpiresAt).toLocaleString()}</small>}</div><strong>{job.amount} {job.asset}</strong></div><div className="my-work-actions">
+      return <article className="my-work-card" key={job.id}><header className="my-work-card-header"><div className="my-work-card-title"><span className="my-work-category-tag">{workCategoryName(job.category)}</span><h4>{job.title}</h4></div><strong className="my-work-reward">{job.amount} <small>{job.asset}</small></strong></header><div className="my-work-card-meta"><span className={`my-work-status status-${job.status}`}>{statusLabels[job.status] || job.status.replaceAll('_', ' ')}</span>{job.doerAgent && <span className="my-work-agent-tag">AI worker · {job.doerAgent.name}</span>}</div>{job.claimExpiresAt && <div className="my-work-deadline"><span>Claim deadline</span><time dateTime={new Date(job.claimExpiresAt).toISOString()}>{new Date(job.claimExpiresAt).toLocaleString()}</time></div>}<div className="my-work-actions">
         <button className="pill outline" onClick={() => openReview(job)}>View job history</button>
         {canSubmit && <button className="pill primary" onClick={() => setDialog({ mode: 'submit', job })}>Submit work</button>}
         {isDoer && job.doerAgent && ['in_progress', 'revision_requested'].includes(job.status) && <button className="pill outline" disabled={busy} onClick={() => takeOverAgentJob(job)}>Take over from AI</button>}
@@ -179,7 +203,7 @@ function MyWork({ session, walletAddress }) {
         {isDoer && job.payoutRecoveryAvailable && <button className="pill primary" disabled={busy} onClick={() => setDialog({ mode: 'payout', job })}>Update payout wallet</button>}
         {canDispute && <button className="pill outline" onClick={() => setDialog({ mode: 'dispute', job })}>Open dispute</button>}
       </div></article>;
-    })}</div>
+    })}</div> : <div className="my-work-empty"><span className="my-work-empty-mark">✓</span><h4>{jobs.length ? 'No jobs in this category' : 'Your work will appear here'}</h4><p>{jobs.length ? 'Choose another category to see the rest of your work.' : 'Claim a funded job or create one to start building your work history.'}</p>{selectedCategory !== 'all' && <button className="pill outline" onClick={() => setSelectedCategory('all')}>Show all work</button>}</div>}
     {feedback && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="my-work-feedback-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="my-work-feedback-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
     <WorkflowDialog dialog={dialog} onClose={() => setDialog(null)} onSubmit={submitDialog} onVideoHelp={() => setMediaInfo({ title: 'Submitting a video', paragraphs: ['Image attachments are uploaded to JobsAI’s Cloudinary media storage. JobsAI accepts JPEG, PNG, WebP, and GIF images up to 5 MB each, with a maximum of five images per submission.', 'For video work, upload the video to cloud storage such as Cloudinary, Google Drive, Dropbox, or an unlisted video host. Set access so the client can view it, then paste the share link into Evidence links.'] })} busy={busy} />
     <InformationDialog info={mediaInfo} onClose={() => setMediaInfo(null)} />
@@ -1065,6 +1089,7 @@ function WorkerProfilePanel({ session }) {
   if (!loaded) return <section className="worker-profile-panel" aria-busy="true"><div className="worker-profile-loading" /></section>;
   return <section className="worker-profile-panel" aria-labelledby="worker-profile-title">
     <div className="created-jobs-heading"><div><span className="eyebrow">YOUR PUBLIC WORK PROFILE</span><h2 id="worker-profile-title">Worker profile</h2><p>Share your availability and rates. Your email and phone number are sent to JobsAI for review and are never shown on your public page.</p></div>{profile?.status === 'approved' && <span className="worker-verified-badge">✓ JobsAI approved</span>}</div>
+    <div className="worker-profile-steps" aria-label="How to publish your worker profile"><article><span>01</span><div><strong>Complete your details</strong><p>Add your availability, contact details, and rate tiers.</p></div></article><article><span>02</span><div><strong>Send it for review</strong><p>The JobsAI team checks your application before it is published.</p></div></article><article><span>03</span><div><strong>Share your profile</strong><p>After approval, copy a public link and share it with anyone.</p></div></article></div>
     {profile && <><div className="worker-profile-stats"><article><span>Completed jobs</span><strong>{profile.completedJobs}</strong></article><article><span>Median time to first submission</span><strong>{elapsedLabel(profile.medianFirstDeliverySeconds)}</strong><small>For completed jobs only. This measures delivery speed, not quality.</small></article></div>
       <div className="worker-profile-status"><strong>Profile status: {profile.status.replaceAll('_', ' ')}</strong>{profile.reviewNote && <p>{profile.reviewNote}</p>}{profile.status === 'approved' && profile.publicProfile && <button className="pill outline" type="button" onClick={shareProfile}>Copy public profile link</button>}</div>
       <section className="worker-history"><h3>Completed work</h3>{profile.completedJobHistory?.length ? <ul>{profile.completedJobHistory.map(job => <li key={job.id}><strong>{job.title}</strong><span>{job.category.replaceAll('_', ' ')} · {job.completedAt ? new Date(job.completedAt).toLocaleDateString() : 'Completed'}</span></li>)}</ul> : <p>Completed jobs will appear here after payment is settled.</p>}</section>
@@ -1120,6 +1145,7 @@ function BuyerApiSettings({ session }) {
   if (!loaded) return <section className="buyer-api-settings" aria-busy="true"><div className="worker-profile-loading" /></section>;
   return <section className="buyer-api-settings" aria-labelledby="buyer-api-settings-title">
     <article className="created-jobs-card"><div className="created-jobs-heading"><div><span className="eyebrow">SERVER-TO-SERVER ACCESS</span><h2 id="buyer-api-settings-title">Buyer API key</h2><p>Use a key from your own server to create jobs, check escrow funding, and manage client reviews through the JobsAI API.</p></div></div>
+      <div className="buyer-api-steps" aria-label="How to use the Buyer API"><article><span>01</span><div><strong>Create a key</strong><p>Generate one here. Copy it once and save it in your server’s private settings.</p></div></article><article><span>02</span><div><strong>Create work</strong><p>Your server sends a job brief and receives the job’s escrow address.</p></div></article><article><span>03</span><div><strong>Fund and follow up</strong><p>Send the job amount from your wallet, check its balance, then manage submissions here through your server.</p></div></article></div>
       <div className="buyer-api-note"><strong>Funding stays in your control.</strong><span>The API gives you each job’s escrow address. Send the required ETH or USDG there with your signer, then call the funding-status endpoint. The API key cannot sign transactions or move funds from your wallet.</span></div>
       {keyInfo ? <div className="buyer-api-current"><div><span className="eyebrow">ACTIVE KEY</span><code>{keyInfo.prefix}••••••••</code><small>Created {new Date(keyInfo.createdAt).toLocaleString()} · {keyInfo.lastUsedAt ? `Last used ${new Date(keyInfo.lastUsedAt).toLocaleString()}` : 'Not used yet'}</small></div><div className="buyer-api-actions"><button className="pill outline" onClick={generateKey} disabled={busy}>Rotate key</button><button className="pill outline" onClick={revokeKey} disabled={busy}>Revoke key</button></div></div> : <p>No buyer API key is active.</p>}
       {!keyInfo && <button className="pill primary" onClick={generateKey} disabled={busy}>Generate buyer API key</button>}
