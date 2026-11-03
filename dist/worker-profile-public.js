@@ -20,23 +20,28 @@
   function renderProfile(profile, userTag) {
     document.title = `${profile.fullName} · JobsAI worker`;
     const card = el('section', undefined, 'worker-public-card');
-    const heading = el('div', undefined, 'worker-public-heading');
-    const eyebrow = el('span', 'JOBS AI WORKER', 'eyebrow');
-    const title = el('h1', profile.fullName);
-    heading.append(eyebrow, title);
-    if (userTag) heading.append(el('span', `@${userTag}`, 'worker-user-tag'));
-    if (profile.verified) heading.append(el('span', '✓ JobsAI approved', 'worker-verified-badge'));
-    card.append(heading, el('p', `${profile.country} · ${profile.timeZone}`, 'worker-public-location'));
-    card.append(el('h2', 'Working hours'), el('p', profile.workHours));
+    const heading = el('header', undefined, 'worker-public-heading');
+    const headingTop = el('div', undefined, 'worker-public-heading-top');
+    headingTop.append(el('span', 'JOBS AI WORKER', 'eyebrow'));
+    if (profile.verified) headingTop.append(el('span', '✓ JobsAI approved', 'worker-verified-badge'));
+    const identity = el('div', undefined, 'worker-public-identity');
+    identity.append(el('h1', profile.fullName));
+    if (userTag) identity.append(el('span', `@${userTag}`, 'worker-user-tag'));
+    heading.append(headingTop, identity);
+    const details = el('dl', undefined, 'worker-public-details');
+    for (const [label, value] of [['Location', `${profile.country} · ${profile.timeZone}`], ['Working hours', profile.workHours]]) {
+      const detail = el('div'); detail.append(el('dt', label), el('dd', value)); details.append(detail);
+    }
+    card.append(heading, details);
     const stats = el('div', undefined, 'worker-profile-stats');
-    const jobs = el('article'); jobs.append(el('span', 'Completed jobs'), el('strong', String(profile.completedJobs)));
-    const speed = el('article'); speed.append(el('span', 'Median time to first submission'), el('strong', duration(profile.medianFirstDeliverySeconds)), el('small', 'Across completed jobs. This measures delivery speed, not quality.'));
+    const jobs = el('article', undefined, 'worker-stat-jobs'); jobs.append(el('span', 'Completed jobs'), el('strong', String(profile.completedJobs)));
+    const speed = el('article', undefined, 'worker-stat-speed'); speed.append(el('span', 'Median time to first submission'), el('strong', duration(profile.medianFirstDeliverySeconds)), el('small', 'Across completed jobs · delivery speed, not quality'));
     stats.append(jobs, speed); card.append(stats);
     const rateSection = el('section', undefined, 'worker-public-section');
     rateSection.append(el('h2', 'Rates'));
     const rates = el('div', undefined, 'worker-public-rates');
     for (const tier of profile.rateTiers || []) {
-      const item = el('article'); item.append(el('h3', tier.name), el('p', tier.scope), el('strong', `${tier.amount} ${tier.asset.toUpperCase()}`)); rates.append(item);
+      const item = el('article', undefined, 'worker-public-rate'); item.append(el('h3', tier.name), el('p', tier.scope), el('strong', `${tier.amount} ${tier.asset.toUpperCase()}`)); rates.append(item);
     }
     rateSection.append(rates); card.append(rateSection);
     const historySection = el('section', undefined, 'worker-public-section');
