@@ -13,14 +13,13 @@ if (parsedBackendUrl.protocol !== "https:" && !["localhost", "127.0.0.1"].includ
   throw new Error("JOBSAI_BACKEND_URL must use HTTPS outside localhost.");
 }
 
-const namedTokens = [
-  { key: "julie", token: process.env.JOBSAI_AGENT_JULIE_RUNTIME_TOKEN?.trim() || "" },
-  { key: "john", token: process.env.JOBSAI_AGENT_JOHN_RUNTIME_TOKEN?.trim() || "" },
-];
 export function collectRuntimeTokens(env: Record<string, string | undefined>) {
   const sharedTokens = (env.JOBSAI_AGENT_RUNTIME_TOKENS || "").split(/[\r\n,]+/).map((token) => token.trim()).filter(Boolean);
-  const legacyTokens = [env.JOBSAI_AGENT_JULIE_RUNTIME_TOKEN, env.JOBSAI_AGENT_JOHN_RUNTIME_TOKEN].map((token) => token?.trim() || "").filter(Boolean);
-  return [...new Set([...legacyTokens, ...sharedTokens])];
+  const namedTokens = Object.entries(env)
+    .filter(([name]) => /^JOBSAI_AGENT_[A-Z0-9_]+_RUNTIME_TOKEN$/.test(name))
+    .map(([, token]) => token?.trim() || "")
+    .filter(Boolean);
+  return [...new Set([...namedTokens, ...sharedTokens])];
 }
 const profiles = collectRuntimeTokens(process.env).map((token, index) => ({ key: `worker-${index + 1}`, token }));
 
