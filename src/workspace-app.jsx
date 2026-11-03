@@ -236,6 +236,8 @@ function FundedJobs({ session }) {
 function CreateJobPanel({ session, walletAddress, chainId }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [codeRepo, setCodeRepo] = useState('');
+  const [codeFiles, setCodeFiles] = useState([]);
   const [criteria, setCriteria] = useState('');
   const [category, setCategory] = useState('writing');
   const [asset, setAsset] = useState('eth');
@@ -336,15 +338,29 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
       setFeedback({ title: 'Add acceptance criteria', message: 'Enter at least one clear condition for accepting the finished work.', kind: 'error' });
       return;
     }
+    let jobDescription = description.trim();
+    if (category === 'coding' && (codeRepo.trim() || codeFiles.length)) {
+      if (codeRepo.trim() && !/^https:\/\/(?:www\.)?github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/.*)?$/.test(codeRepo.trim())) {
+        setFeedback({ title: 'Check the repository link', message: 'Enter an HTTPS link to a public GitHub repository.', kind: 'error' });
+        return;
+      }
+      const attached = await Promise.all(codeFiles.map(async file => ({ name: file.name, text: await file.text() })));
+      const sourceBlock = [codeRepo.trim() ? `Public GitHub repository for review: ${codeRepo.trim()}` : '', ...attached.map(file => `[SOURCE FILE: ${file.name}]\n\`\`\`\n${file.text}\n\`\`\``)].filter(Boolean).join('\n\n');
+      jobDescription = `${jobDescription}\n\n${sourceBlock}`.trim();
+      if (jobDescription.length > 20000) {
+        setFeedback({ title: 'Source files are too large', message: 'Keep the job brief and attached source files under 20,000 characters, or provide a public GitHub repository link instead.', kind: 'error' });
+        return;
+      }
+    }
     setSaving(true);
     setFeedback({ title: 'Creating your job', message: 'Setting up its escrow address and funding terms…', kind: 'loading' });
     try {
-      const input = { title, description, acceptanceCriteria, category, asset, amount, ...(deadlineAt ? { deadlineAt: new Date(deadlineAt).toISOString() } : {}) };
+      const input = { title, description: jobDescription, acceptanceCriteria, category, asset, amount, ...(deadlineAt ? { deadlineAt: new Date(deadlineAt).toISOString() } : {}) };
       const response = await JobsAIAPI.createJob(input, session.token);
       const created = response.data;
       setJobs(current => [created, ...current.filter(job => job.id !== created.id)]);
       setLoaded(true);
-      setTitle(''); setDescription(''); setCriteria(''); setCategory('writing'); setAmount(''); setDeadlineAt('');
+      setTitle(''); setDescription(''); setCriteria(''); setCategory('writing'); setAmount(''); setDeadlineAt(''); setCodeRepo(''); setCodeFiles([]);
       setFeedback({ title: 'Job created', message: `Fund ${created.amount} ${created.asset} from your connected wallet to publish this job for claiming.`, kind: 'success' });
     } catch (error) {
       setFeedback({ title: 'Could not create job', message: error.message || 'JobsAI could not create this job.', kind: 'error' });
@@ -401,7 +417,8 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
       <div className="job-draft-box"><label htmlFor="job-draft-prompt">Start from one sentence <small>Optional</small></label><textarea id="job-draft-prompt" rows="2" maxLength="600" placeholder="e.g. Translate my restaurant menu into Spanish and French, keeping prices and dish names" value={draftPrompt} onChange={event => setDraftPrompt(event.target.value)} /><div className="job-draft-actions"><button type="button" className="pill outline" onClick={draftFromSentence} disabled={drafting || saving}>{drafting ? 'Drafting…' : 'Draft the brief'}</button><small>AI fills in the fields below for you to edit.</small></div></div>
       <label>Job title<input required minLength="3" maxLength="160" value={title} onChange={event => setTitle(event.target.value)} /></label>
       <label>Description<textarea required maxLength="20000" rows="5" value={description} onChange={event => setDescription(event.target.value)} /></label>
-      <label>Work category<select value={category} onChange={event => setCategory(event.target.value)}><option value="writing">Article or social thread writing</option><option value="image_generation">Image generation</option><option value="research">Research</option><option value="design">Design</option><option value="coding">Coding</option><option value="data">Data</option><option value="other">Other</option></select></label>
+      <label>Work category<select value={category} onChange={event => setCategory(event.target.value)}><option value="writing">Article or social thread writing</option><option value="image_generation">Image generation</option><option value="research">Research</option><option value="design">Design</option><option value="coding">Coding or code review</option><option value="data">Data</option><option value="other">Other</option></select></label>
+      {category === 'coding' && <fieldset className="job-code-source"><legend>Code review source <small>Optional</small></legend><label>Public GitHub repository<input type="url" inputMode="url" placeholder="https://github.com/owner/repository" value={codeRepo} onChange={event => setCodeRepo(event.target.value)} /></label><label>Or attach source files<input type="file" accept=".c,.cc,.cpp,.cs,.css,.go,.h,.hpp,.html,.java,.js,.jsx,.kt,.md,.php,.py,.rb,.rs,.sh,.sql,.swift,.ts,.tsx,.vue,.xml,.yaml,.yml,.json,.txt" multiple onChange={event => { const files = Array.from(event.target.files || []); const total = files.reduce((sum, file) => sum + file.size, 0); if (files.length > 8 || total > 12000) { event.target.value = ''; setCodeFiles([]); setFeedback({ title: 'Choose fewer or smaller files', message: 'Attach up to 8 text files with a combined size under 12 KB. For larger codebases, provide a public GitHub repository link.', kind: 'error' }); return; } setCodeFiles(files); }} /></label><small>{codeFiles.length ? `${codeFiles.length} source file${codeFiles.length === 1 ? '' : 's'} selected` : 'Only attach code you are comfortable sharing with workers on the public job board. Larger codebases can use a public GitHub link.'}</small></fieldset>}
       <div className="criteria-field"><div className="criteria-field-header"><label htmlFor="job-acceptance-criteria">Acceptance criteria</label><button type="button" className="inline-info-button" onClick={() => setJobInfo({ title: 'Acceptance criteria', paragraphs: ['Enter one clear condition per line. For example: “Works on mobile and desktop” or “Include the source files.” The worker and client use these conditions to review each submission and revision.'] })}>How to write criteria</button></div><textarea id="job-acceptance-criteria" required rows="4" value={criteria} onChange={event => setCriteria(event.target.value)} /></div>
       <div className="create-job-payment-row"><label>Payment asset<select value={asset} onChange={event => setAsset(event.target.value)}><option value="eth">ETH</option><option value="usdg">USDG</option></select></label><label>Amount<input required inputMode="decimal" pattern="(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,18})?" value={amount} onChange={event => setAmount(event.target.value)} /></label></div>
       <label>Deadline<input type="datetime-local" value={deadlineAt} onChange={event => setDeadlineAt(event.target.value)} /></label>
@@ -426,7 +443,7 @@ const agentCategoryOptions = [
   ['image_generation', 'Image creation'],
   ['research', 'Research'],
   ['design', 'Design'],
-  ['coding', 'Coding'],
+  ['coding', 'Code review and coding'],
   ['data', 'Data'],
   ['other', 'Other'],
 ];

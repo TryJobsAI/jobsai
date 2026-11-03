@@ -59,7 +59,7 @@ describe("Exec X1 worker", () => {
 
   test("ignores an agent profile outside the writing category", async () => {
     let scanned = false;
-    const deps = dependencies({ profile: async () => ({ ...profile, categories: ["coding"] }), availableJobs: async () => { scanned = true; return [job]; } });
+    const deps = dependencies({ profile: async () => ({ ...profile, categories: ["research"] }), availableJobs: async () => { scanned = true; return [job]; } });
     expect(await processAgentToken("token", deps)).toMatchObject({ processed: 0 });
     expect(scanned).toBe(false);
   });

@@ -31,6 +31,7 @@ export const config = {
   tavilyApiKey: process.env.TAVILY_API_KEY?.trim() || "",
   openRouterApiKey: process.env.OPENROUTER_API_KEY?.trim() || "",
   openRouterImageModel: process.env.OPENROUTER_IMAGE_MODEL?.trim() || "recraft/recraft-v3",
+  openRouterCodeModel: process.env.OPENROUTER_CODE_MODEL?.trim() || "~anthropic/claude-sonnet-latest",
   runtimeProfiles: profiles,
   port: integer("PORT", 3100, 1, 65535),
   pollIntervalMs: integer("POLL_INTERVAL_MS", 30_000, 10_000, 600_000),
