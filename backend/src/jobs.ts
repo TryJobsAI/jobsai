@@ -53,8 +53,11 @@ type JobRow = {
   settlement_payout_signed_tx?: string | null;
   settlement_lease_until?: Date | null;
   service_id: string | null;
-  selection_mode: "claim" | "proposals";
+  selection_mode: "claim" | "proposals" | "invite";
   proposal_count: number;
+  invitation_wallet: string | null;
+  invitation_status: string | null;
+  invitation_message: string | null;
 };
 
 const jobSelect = `SELECT j.*, c.wallet_address AS client_wallet, d.wallet_address AS doer_wallet,
@@ -62,8 +65,10 @@ const jobSelect = `SELECT j.*, c.wallet_address AS client_wallet, d.wallet_addre
     ew.address AS escrow_address, s.status AS settlement_status, s.outcome AS settlement_outcome, s.error AS settlement_error,
     s.recipient AS settlement_recipient, s.payout_signed_tx AS settlement_payout_signed_tx,
     s.lease_until AS settlement_lease_until,
-    (SELECT count(*)::int FROM job_proposals p WHERE p.job_id=j.id AND p.status='pending') AS proposal_count
+    (SELECT count(*)::int FROM job_proposals p WHERE p.job_id=j.id AND p.status='pending') AS proposal_count,
+    inv.invitee_wallet AS invitation_wallet, inv.status AS invitation_status, inv.message AS invitation_message
   FROM jobs j JOIN users c ON c.id=j.client_id
+  LEFT JOIN LATERAL (SELECT i.invitee_wallet,i.status,i.message FROM job_invitations i WHERE i.job_id=j.id ORDER BY i.created_at DESC LIMIT 1) inv ON true
   LEFT JOIN users d ON d.id=j.doer_id
   LEFT JOIN ai_agents a ON a.id=j.doer_agent_id
   JOIN job_escrow_wallets ew ON ew.job_id=j.id
@@ -78,6 +83,9 @@ function presentJob(job: JobRow) {
     serviceId: job.service_id,
     selectionMode: job.selection_mode,
     proposalCount: job.proposal_count,
+    invitation: job.selection_mode === "invite" && job.invitation_wallet
+      ? { wallet: job.invitation_wallet, status: job.invitation_status, message: job.invitation_message }
+      : null,
     workerType: job.doer_agent_id ? "ai" : job.doer_id ? "human" : null,
     doerAgent: job.doer_agent_id ? { id: job.doer_agent_id, name: job.doer_agent_name } : null,
     title: job.title,
@@ -126,7 +134,8 @@ export type NewJobRecord = {
   asset: JobAsset;
   amountRaw: bigint;
   deadlineAt: Date | null;
-  selectionMode?: "claim" | "proposals";
+  selectionMode?: "claim" | "proposals" | "invite";
+  invitation?: { wallet: string; message: string | null };
   service?: { id: string; providerId: string; agentId: string | null };
 };
 
@@ -166,11 +175,16 @@ export async function createJobRecord(clientId: string, job: NewJobRecord) {
       "INSERT INTO job_escrow_wallets (job_id,address,encrypted_private_key) VALUES ($1,$2,$3)",
       [id, escrow.address, escrow.encryptedPrivateKey],
     );
+    if (job.invitation) {
+      await client.query("INSERT INTO job_invitations (job_id,client_id,invitee_wallet,message) VALUES ($1,$2,$3,$4)",
+        [id, clientId, job.invitation.wallet, job.invitation.message]);
+    }
     await appendEvent(client, id, clientId, job.service ? "job.service_ordered" : "job.created", {
       asset: job.asset,
       amountRaw: job.amountRaw.toString(),
       ...(job.service ? { serviceId: job.service.id } : {}),
-      ...(job.selectionMode === "proposals" ? { selectionMode: "proposals" } : {}),
+      ...(job.selectionMode && job.selectionMode !== "claim" ? { selectionMode: job.selectionMode } : {}),
+      ...(job.invitation ? { invitedWallet: job.invitation.wallet } : {}),
     });
     const created = await client.query<JobRow>(`${jobSelect} WHERE j.id=$1`, [id]);
     await client.query("COMMIT");
@@ -207,9 +221,10 @@ export async function assignFundedServiceOrder(client: PoolClient, jobId: string
   return "in_progress";
 }
 
-// A chosen proposal stops counting once its job goes back to the board.
-export async function releaseAcceptedProposal(client: { query: (text: string, values?: any[]) => Promise<any> }, jobId: string) {
+// A chosen proposal or accepted invitation stops counting once its job goes back to the board.
+export async function releaseChosenWorker(client: { query: (text: string, values?: any[]) => Promise<any> }, jobId: string) {
   await client.query("UPDATE job_proposals SET status='released',updated_at=now() WHERE job_id=$1 AND status='accepted'", [jobId]);
+  await client.query("UPDATE job_invitations SET status='released',responded_at=now() WHERE job_id=$1 AND status='accepted'", [jobId]);
 }
 
 export async function releaseExpiredClaims() {
@@ -223,6 +238,7 @@ export async function releaseExpiredClaims() {
            AND NOT EXISTS (SELECT 1 FROM job_submissions sub WHERE sub.job_id=j.id)
            AND (j.service_id IS NULL OR j.doer_id IS DISTINCT FROM j.reserved_doer_id)
            AND NOT EXISTS (SELECT 1 FROM job_proposals p WHERE p.job_id=j.id AND p.proposer_id=j.doer_id AND p.status='accepted')
+           AND NOT EXISTS (SELECT 1 FROM job_invitations i WHERE i.job_id=j.id AND i.accepted_by=j.doer_id AND i.status='accepted')
          ORDER BY j.claimed_at
          LIMIT 100
          FOR UPDATE SKIP LOCKED
@@ -273,6 +289,12 @@ jobsRouter.post(
     const amount = parseJobAmount(input.asset, input.amount, config.USDG_DECIMALS);
     const minimum = parseJobAmount(input.asset, input.asset === "eth" ? config.MIN_JOB_ETH_AMOUNT : config.MIN_JOB_USDG_AMOUNT, config.USDG_DECIMALS);
     assertMinimumJobAmount(amount, minimum, input.asset);
+    if (input.selectionMode === "invite" && !input.inviteWallet)
+      throw new ApiError(400, "invite_wallet_required", "Enter the wallet address of the worker you want to invite.");
+    if (input.inviteWallet && input.selectionMode !== "invite")
+      throw new ApiError(400, "invite_requires_invite_mode", "Choose Invite a worker to send this job to a specific wallet.");
+    if (input.inviteWallet === request.auth!.walletAddress.toLowerCase())
+      throw new ApiError(400, "cannot_invite_self", "You cannot invite your own wallet to your job.");
     const created = await createJobRecord(request.auth!.userId, {
       title: input.title,
       description: input.description,
@@ -282,6 +304,7 @@ jobsRouter.post(
       amountRaw: amount,
       deadlineAt: parseDeadline(request.body?.deadlineAt),
       selectionMode: input.selectionMode,
+      invitation: input.inviteWallet ? { wallet: input.inviteWallet, message: input.inviteMessage ?? null } : undefined,
     });
     response.status(201).json({ data: created });
   }),
@@ -296,7 +319,7 @@ jobsRouter.get(
     const page = z.coerce.number().int().min(1).max(10_000).default(1).parse(request.query.page);
     const limit = z.coerce.number().int().min(1).max(100).default(30).parse(request.query.limit);
     const result = await db.query<JobRow>(
-      `${jobSelect} WHERE j.status='ready' ORDER BY j.created_at DESC LIMIT $1 OFFSET $2`,
+      `${jobSelect} WHERE j.status='ready' AND j.selection_mode<>'invite' ORDER BY j.created_at DESC LIMIT $1 OFFSET $2`,
       [limit, (page - 1) * limit],
     );
     response.json({ data: result.rows.map(presentJob), page, limit });
@@ -326,8 +349,9 @@ jobsRouter.get(
     const allowed =
       job.client_id === request.auth!.userId ||
       job.doer_id === request.auth!.userId ||
-      teamWallets.has(request.auth!.walletAddress.toLowerCase());
-    if (!allowed && job.status !== "ready")
+      teamWallets.has(request.auth!.walletAddress.toLowerCase()) ||
+      (job.selection_mode === "invite" && job.invitation_wallet === request.auth!.walletAddress.toLowerCase());
+    if (!allowed && (job.status !== "ready" || job.selection_mode === "invite"))
       throw new ApiError(404, "job_not_found", "This job does not exist.");
     response.json({ data: presentJob(job) });
   }),
@@ -481,6 +505,7 @@ jobsRouter.post(
       const job = selected.rows[0];
       if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
       assertCanCancelFundedJob(job, request.auth!.userId);
+      await client.query("UPDATE job_invitations SET status='cancelled',responded_at=now() WHERE job_id=$1 AND status='pending'", [id]);
       result = await createSettlement(id, request.auth!.userId, "client_cancellation", "refund_client", client);
       await client.query("COMMIT");
     } catch (error) {
@@ -511,7 +536,7 @@ jobsRouter.post(
       if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
       assertCanUnclaim(job, request.auth!.userId);
       await client.query("UPDATE jobs SET doer_id=NULL,doer_agent_id=NULL,status='ready',claimed_at=NULL,updated_at=now() WHERE id=$1", [id]);
-      await releaseAcceptedProposal(client, id);
+      await releaseChosenWorker(client, id);
       await appendEvent(client, id, request.auth!.userId, "job.unclaimed");
       await client.query("COMMIT");
       response.json({ data: { jobId: id, status: "ready" } });
@@ -568,7 +593,7 @@ jobsRouter.post(
       if (job.status !== "in_progress" || !job.doer_id || job.has_submissions)
         throw new ApiError(409, "worker_not_releasable", "A worker can be released only before any work has been submitted.");
       await client.query("UPDATE jobs SET doer_id=NULL,doer_agent_id=NULL,status='ready',claimed_at=NULL,updated_at=now() WHERE id=$1", [id]);
-      await releaseAcceptedProposal(client, id);
+      await releaseChosenWorker(client, id);
       await appendEvent(client, id, request.auth!.userId, "job.worker_released_by_client");
       await client.query("COMMIT");
       response.json({ data: { jobId: id, status: "ready" } });

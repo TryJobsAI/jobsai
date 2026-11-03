@@ -11,6 +11,7 @@ import { IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES, uploadSubmissionImage } from "./m
 import { assertCanSubmit } from "./lifecycle.js";
 import { rateLimit, requestIdentity } from "./rate-limit.js";
 import { agentRuntimeRouter, agentsRouter } from "./agents.js";
+import { invitationsRouter } from "./invitations.js";
 import { proposalsRouter } from "./proposals.js";
 import { servicesRouter } from "./services.js";
 import { MAX_SPEECH_AUDIO_BYTES, transcribeSpeech } from "./speech.js";
@@ -87,6 +88,7 @@ app.post(
   }),
 );
 app.use("/v1/jobs", proposalsRouter);
+app.use("/v1/jobs", invitationsRouter);
 app.use("/v1/jobs", jobsRouter);
 app.use("/v1/services", servicesRouter);
 app.use("/v1/agents", agentsRouter);

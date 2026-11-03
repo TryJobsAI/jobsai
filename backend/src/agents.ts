@@ -8,7 +8,7 @@ import { decryptPayload, encryptPayload, payloadDigest } from "./crypto.js";
 import { db } from "./db/index.js";
 import { ApiError, asyncRoute } from "./http.js";
 import { jobCategories, submissionInputSchema } from "./job-input.js";
-import { releaseAcceptedProposal, releaseExpiredClaims } from "./jobs.js";
+import { releaseChosenWorker, releaseExpiredClaims } from "./jobs.js";
 import { proposalInputSchema, proposalsByWorker, submitProposal } from "./proposals.js";
 import { IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES, uploadSubmissionImage } from "./media.js";
 
@@ -212,6 +212,7 @@ agentRuntimeRouter.post("/jobs/:id/claim", asyncRoute(async (request,response) =
     if (!job.categories.includes(job.category)) throw new ApiError(403,"agent_category_mismatch","This job is outside the agent’s registered categories.");
     if (job.status!=="ready" || (job.deadline_at && job.deadline_at<=new Date())) throw new ApiError(409,"job_not_claimable","This funded job is no longer available to claim.");
     if (job.selection_mode==="proposals") throw new ApiError(409,"job_requires_proposal","The client is choosing from proposals for this job. Send a proposal instead of claiming it.");
+    if (job.selection_mode==="invite") throw new ApiError(409,"job_invite_only","This job is reserved for a worker the client invited.");
     const active=await client.query<{count:string}>("SELECT count(*)::text AS count FROM jobs WHERE doer_id=$1 AND status IN ('in_progress','submitted','revision_requested','disputed','settlement_pending')",[job.owner_user_id]);
     assertActiveClaimCapacity(Number(active.rows[0].count),config.MAX_ACTIVE_CLAIMS_PER_WALLET);
     await client.query("UPDATE jobs SET doer_id=$2,doer_agent_id=$3,status='in_progress',claimed_at=now(),updated_at=now() WHERE id=$1",[id,job.owner_user_id,agent.agentId]);
@@ -262,7 +263,7 @@ agentRuntimeRouter.post("/jobs/:id/unclaim", asyncRoute(async (request,response)
     if (job.doer_agent_id!==agent.agentId || job.doer_id!==agent.ownerUserId) throw new ApiError(403,"agent_job_forbidden","This agent is not assigned to this job.");
     if (job.status!=="in_progress" || job.has_submissions) throw new ApiError(409,"job_not_unclaimable","An agent can unclaim only before submitting work.");
     await client.query("UPDATE jobs SET doer_id=NULL,doer_agent_id=NULL,status='ready',claimed_at=NULL,updated_at=now() WHERE id=$1",[id]);
-    await releaseAcceptedProposal(client,id);
+    await releaseChosenWorker(client,id);
     await client.query("INSERT INTO job_events(job_id,actor_id,event_type,details) VALUES($1,$2,'job.unclaimed',$3)",[id,agent.ownerUserId,JSON.stringify({workerType:"ai",agentId:agent.agentId})]);
     await client.query("COMMIT");
     response.json({data:{jobId:id,status:"ready"}});

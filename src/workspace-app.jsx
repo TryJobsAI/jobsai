@@ -174,6 +174,7 @@ function MyWork({ session, walletAddress }) {
         {isDoer && job.doerAgent && ['in_progress', 'revision_requested'].includes(job.status) && <button className="pill outline" disabled={busy} onClick={() => takeOverAgentJob(job)}>Take over from AI</button>}
         {isDoer && job.status === 'in_progress' && <button className="pill outline" disabled={busy} onClick={() => unclaim(job)}>Unclaim job</button>}
         {isClient && job.status === 'in_progress' && <button className="pill outline" disabled={busy} onClick={() => releaseWorker(job)}>Release worker</button>}
+        {isClient && job.status === 'completed' && job.doerWallet && <button className="pill outline" data-open-tab="create" onClick={() => document.dispatchEvent(new CustomEvent('jobsai:hire-worker', { detail: { wallet: job.doerWallet, title: job.title } }))}>Hire again</button>}
         {isDoer && job.payoutRecoveryAvailable && <button className="pill primary" disabled={busy} onClick={() => setDialog({ mode: 'payout', job })}>Update payout wallet</button>}
         {canDispute && <button className="pill outline" onClick={() => setDialog({ mode: 'dispute', job })}>Open dispute</button>}
       </div></article>;
@@ -215,22 +216,27 @@ function FundedJobs({ session }) {
   const [proposing, setProposing] = useState(null);
   const [myProposals, setMyProposals] = useState({});
   const [agents, setAgents] = useState([]);
+  const [invitations, setInvitations] = useState([]);
+  const [invitationAgent, setInvitationAgent] = useState({});
   const [feedback, setFeedback] = useState({ title: 'Loading funded jobs', message: 'Checking for currently funded work…', kind: 'loading' });
   const [jobInfo, setJobInfo] = useState(null);
 
   async function refresh() {
     setFeedback({ title: 'Loading funded jobs', message: 'Checking for currently funded work…', kind: 'loading' });
     try {
-      const [response, proposalResponse, agentResponse] = await Promise.all([
+      const [response, proposalResponse, agentResponse, invitationResponse] = await Promise.all([
         JobsAIAPI.readyJobs(),
         JobsAIAPI.myProposals(session.token).catch(() => ({ data: [] })),
         JobsAIAPI.myAgents(session.token).catch(() => ({ data: [] })),
+        JobsAIAPI.myInvitations(session.token).catch(() => ({ data: [] })),
       ]);
       const ready = Array.isArray(response?.data) ? response.data : [];
+      const invited = invitationResponse?.data || [];
+      setInvitations(invited);
       setJobs(ready);
       setMyProposals(Object.fromEntries((proposalResponse?.data || []).map(item => [item.jobId, item])));
       setAgents((agentResponse?.data || []).filter(agent => agent.active));
-      setFeedback(ready.length ? null : { title: 'No funded jobs are ready', message: 'Check again later or refresh to look for newly funded work.', kind: 'info' });
+      setFeedback(ready.length || invited.length ? null : { title: 'No funded jobs are ready', message: 'Check again later or refresh to look for newly funded work.', kind: 'info' });
     } catch (error) { setJobs([]); setFeedback({ title: 'Could not load funded jobs', message: error.message || 'JobsAI could not load funded jobs.', kind: 'error' }); }
   }
 
@@ -262,6 +268,24 @@ function FundedJobs({ session }) {
     finally { setBusy(''); }
   }
 
+  async function respondToInvitation(invitation, accept) {
+    const job = invitation.job;
+    setBusy(job.id);
+    setFeedback({ title: accept ? 'Accepting the invitation' : 'Declining the invitation', message: accept ? 'Assigning this job to you…' : 'Letting the client know…', kind: 'loading' });
+    try {
+      const agentId = invitationAgent[job.id];
+      if (accept) await JobsAIAPI.acceptInvitation(job.id, agentId, session.token);
+      else await JobsAIAPI.declineInvitation(job.id, session.token);
+      setInvitations(current => current.filter(item => item.id !== invitation.id));
+      if (accept) document.dispatchEvent(new Event('jobsai:work-updated'));
+      const agent = agents.find(item => item.id === agentId);
+      setFeedback(accept
+        ? { title: 'Invitation accepted', message: agent ? `AI worker ${agent.name} now has this job and will pick it up from its assigned jobs.` : 'The job is now assigned to you. Find it in My work to submit when it is ready.', kind: 'success' }
+        : { title: 'Invitation declined', message: 'The client can invite someone else or open the job to every worker. The escrow stays with the client.', kind: 'success' });
+    } catch (error) { setFeedback({ title: 'Could not respond to the invitation', message: error.message || 'JobsAI could not update this invitation.', kind: 'error' }); }
+    finally { setBusy(''); }
+  }
+
   async function withdrawProposal(proposal) {
     setBusy(proposal.jobId);
     try {
@@ -279,6 +303,15 @@ function FundedJobs({ session }) {
       <div><span className="eyebrow">LIVE · FUNDED ONCHAIN</span><h2 id="live-jobs-title">Jobs ready to claim</h2><button className="text-info-button" onClick={() => setJobInfo({ title: 'Review a funded job', paragraphs: ['Open job details to read the scope, acceptance criteria, listed asset, and deadline before claiming. Claiming assigns the work to you and does not move funds.'] })}>How funded work works</button></div>
       <button className="pill outline" onClick={refresh} disabled={!!busy}>Refresh</button>
     </div>
+    {invitations.length > 0 && <section className="invitation-inbox" aria-labelledby="invitation-inbox-title"><h3 id="invitation-inbox-title">Invited to you <span>{invitations.length}</span></h3>
+      {invitations.map(invitation => { const job = invitation.job; const eligible = agents.filter(agent => agent.categories?.includes(job.category)); return <article className="live-job-card invitation-card" key={invitation.id}>
+        <div className="live-job-top"><h3>{job.title}</h3><strong className="live-job-amount">{job.amount} {job.asset}</strong></div>
+        <p className="live-job-mode"><span className="invite-mode-badge">Only you can take this</span>From {shortWallet(job.clientWallet)}</p>
+        {invitation.message && <blockquote className="invitation-message">{invitation.message}</blockquote>}
+        {eligible.length > 0 && <label className="invitation-worker">Who does the work<select value={invitationAgent[job.id] || ''} onChange={event => setInvitationAgent(current => ({ ...current, [job.id]: event.target.value }))}><option value="">Me (human)</option>{eligible.map(agent => <option key={agent.id} value={agent.id}>AI worker · {agent.name}</option>)}</select></label>}
+        <div className="live-job-actions"><button className="pill outline" onClick={() => setJobInfo({ title: job.title, paragraphs: [job.description, job.deadlineAt ? `Deadline: ${new Date(job.deadlineAt).toLocaleString()}` : 'No deadline provided'], itemsLabel: 'Acceptance criteria', items: job.acceptanceCriteria || [] })}>View details</button><button className="pill outline" disabled={!!busy} onClick={() => respondToInvitation(invitation, false)}>Decline</button><button className="pill primary live-job-claim" disabled={!!busy} onClick={() => respondToInvitation(invitation, true)}>Accept job</button></div>
+      </article>; })}
+    </section>}
     <div className="live-jobs-list">{jobs.map(job => <article className="live-job-card" key={job.id}>
       <div className="live-job-top"><h3>{job.title}</h3><strong className="live-job-amount">{job.amount} {job.asset}</strong></div>
       {job.selectionMode === 'proposals' && <p className="live-job-mode"><span className="proposal-mode-badge">Client picks from proposals</span>{job.proposalCount || 0} {job.proposalCount === 1 ? 'proposal' : 'proposals'}{myProposals[job.id]?.status === 'pending' && <b> · Yours is waiting</b>}</p>}
@@ -312,6 +345,9 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
   const [amount, setAmount] = useState('');
   const [deadlineAt, setDeadlineAt] = useState('');
   const [selectionMode, setSelectionMode] = useState('claim');
+  const [inviteWallet, setInviteWallet] = useState('');
+  const [inviteMessage, setInviteMessage] = useState('');
+  const [reinviting, setReinviting] = useState(null);
   const [reviewing, setReviewing] = useState(null);
   const [draftPrompt, setDraftPrompt] = useState('');
   const [drafting, setDrafting] = useState(false);
@@ -478,8 +514,10 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
     document.addEventListener('jobsai:open-create', onOpen);
     const onRefresh = () => { if (loaded) loadJobs(false); };
     document.addEventListener('jobsai:refresh-created', onRefresh);
+    const onHire = event => { setSelectionMode('invite'); setInviteWallet(event.detail?.wallet || ''); onOpen(); };
+    document.addEventListener('jobsai:hire-worker', onHire);
     if (new URLSearchParams(location.search).get('tab') === 'create') onOpen();
-    return () => { document.removeEventListener('jobsai:open-create', onOpen); document.removeEventListener('jobsai:refresh-created', onRefresh); };
+    return () => { document.removeEventListener('jobsai:open-create', onOpen); document.removeEventListener('jobsai:refresh-created', onRefresh); document.removeEventListener('jobsai:hire-worker', onHire); };
   }, [loaded, session.token, walletAddress]);
 
   useEffect(() => {
@@ -553,16 +591,20 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
         return;
       }
     }
+    if (selectionMode === 'invite' && !/^0x[a-fA-F0-9]{40}$/.test(inviteWallet.trim())) {
+      setFeedback({ title: 'Check the worker wallet', message: 'Enter the 0x wallet address of the person or AI worker owner you want to invite.', kind: 'error' });
+      return;
+    }
     setSaving(true);
     setFeedback({ title: 'Creating your job', message: 'Setting up its escrow address and funding terms…', kind: 'loading' });
     try {
-      const input = { title, description: jobDescription, acceptanceCriteria, category, asset, amount, selectionMode, ...(deadlineAt ? { deadlineAt: new Date(deadlineAt).toISOString() } : {}) };
+      const input = { title, description: jobDescription, acceptanceCriteria, category, asset, amount, selectionMode, ...(selectionMode === 'invite' ? { inviteWallet: inviteWallet.trim(), ...(inviteMessage.trim() ? { inviteMessage: inviteMessage.trim() } : {}) } : {}), ...(deadlineAt ? { deadlineAt: new Date(deadlineAt).toISOString() } : {}) };
       const response = await JobsAIAPI.createJob(input, session.token);
       const created = response.data;
       setJobs(current => [created, ...current.filter(job => job.id !== created.id)]);
       setLoaded(true);
-      setTitle(''); setDescription(''); setCriteria(''); setCategory('writing'); setAmount(''); setDeadlineAt(''); setCodeRepo(''); setCodeFiles([]); setSelectionMode('claim');
-      setFeedback({ title: 'Job created', message: created.selectionMode === 'proposals' ? `Fund ${created.amount} ${created.asset} from your connected wallet to publish this job. Workers then send proposals, and you choose one from Created jobs → Proposals.` : `Fund ${created.amount} ${created.asset} from your connected wallet to publish this job for claiming.`, kind: 'success' });
+      setTitle(''); setDescription(''); setCriteria(''); setCategory('writing'); setAmount(''); setDeadlineAt(''); setCodeRepo(''); setCodeFiles([]); setSelectionMode('claim'); setInviteWallet(''); setInviteMessage('');
+      setFeedback({ title: 'Job created', message: created.selectionMode === 'invite' ? `Fund ${created.amount} ${created.asset} from your connected wallet. The job then appears only for ${shortWallet(created.invitation?.wallet)}, who can accept or decline it.` : created.selectionMode === 'proposals' ? `Fund ${created.amount} ${created.asset} from your connected wallet to publish this job. Workers then send proposals, and you choose one from Created jobs → Proposals.` : `Fund ${created.amount} ${created.asset} from your connected wallet to publish this job for claiming.`, kind: 'success' });
     } catch (error) {
       setFeedback({ title: 'Could not create job', message: error.message || 'JobsAI could not create this job.', kind: 'error' });
     } finally { setSaving(false); }
@@ -591,7 +633,7 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
       await JobsAIAPI.fundJob(job.id, hash, session.token);
       localStorage.removeItem(`jobsai-pending-funding-${job.id}`);
       setJobs(current => current.map(item => item.id === job.id ? { ...item, status: 'ready', fundingTransaction: hash, pendingFundingHash: undefined } : item));
-      setFeedback({ title: 'Job funded and published', message: 'Your job is now visible to eligible workers.', kind: 'success' });
+      setFeedback({ title: 'Job funded and published', message: job.selectionMode === 'invite' ? 'Your invited worker can now accept it from their funded jobs board.' : 'Your job is now visible to eligible workers.', kind: 'success' });
     } catch (error) {
       if (hash) localStorage.setItem(`jobsai-pending-funding-${job.id}`, hash);
       setFeedback({ title: hash ? 'Verify your escrow deposit' : 'Funding was not completed', message: hash ? 'Your transfer was sent, but verification did not finish. Retry verification from your jobs list; do not send the funds again.' : error.message || 'The escrow deposit could not be completed.', kind: 'error' });
@@ -622,6 +664,32 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
     } finally { setSaving(false); }
   }
 
+  async function sendInvitation(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const wallet = String(form.get('wallet') || '').trim(), message = String(form.get('message') || '').trim();
+    const job = reinviting;
+    setSaving(true);
+    try {
+      await JobsAIAPI.inviteWorker(job.id, wallet, message || undefined, session.token);
+      setReinviting(null);
+      await loadJobs(false);
+      setFeedback({ title: 'Invitation sent', message: `${shortWallet(wallet.toLowerCase())} can now accept this job${job.status === 'ready' ? '' : ' once you fund it'}. Any earlier invitation was withdrawn.`, kind: 'success' });
+    } catch (error) { setFeedback({ title: 'Could not send invitation', message: error.message || 'JobsAI could not invite this worker.', kind: 'error' }); }
+    finally { setSaving(false); }
+  }
+
+  async function openToEveryone(job, mode) {
+    setSaving(true);
+    setJobInfo(null);
+    try {
+      await JobsAIAPI.openJob(job.id, mode, session.token);
+      await loadJobs(false);
+      setFeedback({ title: mode === 'proposals' ? 'Now taking proposals' : 'Open to every worker', message: mode === 'proposals' ? 'Any pending invitation was withdrawn. Workers can now send proposals, and you choose one from Created jobs.' : 'Any pending invitation was withdrawn. The first eligible worker can now claim this job from the funded board.', kind: 'success' });
+    } catch (error) { setFeedback({ title: 'Could not open this job', message: error.message || 'JobsAI could not change who can take this job.', kind: 'error' }); }
+    finally { setSaving(false); }
+  }
+
   async function cancelFundedJob(job) {
     setSaving(true);
     setJobInfo(null);
@@ -650,15 +718,19 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
       <fieldset className="selection-mode-field"><legend>How workers start</legend>
         <label className={selectionMode === 'claim' ? 'selected' : ''}><input type="radio" name="selection-mode" value="claim" checked={selectionMode === 'claim'} onChange={() => setSelectionMode('claim')} /><span><b>Instant start</b><small>The first eligible worker to claim it starts right away.</small></span></label>
         <label className={selectionMode === 'proposals' ? 'selected' : ''}><input type="radio" name="selection-mode" value="proposals" checked={selectionMode === 'proposals'} onChange={() => setSelectionMode('proposals')} /><span><b>Review proposals</b><small>Workers and AI workers pitch for it. You compare them and choose one.</small></span></label>
+        <label className={selectionMode === 'invite' ? 'selected' : ''}><input type="radio" name="selection-mode" value="invite" checked={selectionMode === 'invite'} onChange={() => setSelectionMode('invite')} /><span><b>Invite a worker</b><small>Send it to one wallet you already trust. It stays off the public board.</small></span></label>
+        {selectionMode === 'invite' && <div className="invite-fields"><label>Worker wallet<input required pattern="0x[a-fA-F0-9]{40}" autoComplete="off" spellCheck="false" placeholder="0x…" value={inviteWallet} onChange={event => setInviteWallet(event.target.value)} /></label><label>Note to the worker <small>Optional</small><textarea rows="2" maxLength="1000" value={inviteMessage} onChange={event => setInviteMessage(event.target.value)} placeholder="Why you picked them, or anything they should know first." /></label><small>If the wallet owns AI workers, they can hand the job to one of them.</small></div>}
       </fieldset>
       {quality && <section className={`job-quality job-quality-${quality.grade}`} aria-live="polite" aria-label="Brief strength"><div className="job-quality-heading"><span>Brief strength</span><strong>{quality.score}/100 · {{ strong: 'Strong', okay: 'Okay', needs_work: 'Needs work' }[quality.grade]}</strong></div><div className="job-quality-bar" aria-hidden="true"><i style={{ width: `${quality.score}%` }} /></div>{quality.checks.some(item => !item.passed) ? <ul>{quality.checks.filter(item => !item.passed).map(item => <li key={item.id}><b>{item.label}:</b> {item.fix}</li>)}</ul> : <p>Clear and checkable. Workers know what to deliver and how it will be reviewed.</p>}</section>}
       <button className="pill primary" type="submit" disabled={saving}>Create job</button>
     </form>
     <section className="created-jobs-card" aria-labelledby="created-jobs-title"><div className="created-jobs-heading"><div><span className="eyebrow">YOUR JOBS</span><h2 id="created-jobs-title">Created jobs</h2></div><button className="pill outline" onClick={() => loadJobs()} disabled={saving}>Refresh</button></div>
       <div className="created-jobs-list">{jobs.map(job => <article className="created-job-item" key={job.id}><div className="created-job-summary"><h3>{job.title}</h3><strong>{job.amount} {job.asset}</strong></div>
+        {job.selectionMode === 'invite' && job.invitation && ['awaiting_funding', 'ready'].includes(job.status) && <p className={`invitation-status invitation-${job.invitation.status}`}>Invited {shortWallet(job.invitation.wallet)} · {{ pending: job.status === 'ready' ? 'waiting for their answer' : 'they see it once funded', declined: 'declined — invite someone else or open it to everyone', released: 'released — invite someone else or open it to everyone', cancelled: 'withdrawn', accepted: 'accepted' }[job.invitation.status] || job.invitation.status}</p>}
         <div className="created-job-actions"><button className="pill outline" onClick={() => setJobInfo({ title: job.title, paragraphs: [`Status: ${job.status.replaceAll('_', ' ')}.`, job.description, job.deadlineAt ? `Deadline: ${new Date(job.deadlineAt).toLocaleString()}` : 'No deadline provided.', ...(job.pendingFundingHash ? ['A transfer was sent. Verify it to publish the job; do not send funds again.'] : [])], itemsLabel: 'Acceptance criteria', items: job.acceptanceCriteria || [], code: job.status === 'awaiting_funding' ? job.escrowAddress : undefined, codeLabel: 'Escrow address' })}>View details</button>
           {job.status === 'awaiting_funding' && <button className="pill primary" onClick={() => fundJob(job)} disabled={saving}>{job.pendingFundingHash ? 'Verify deposit' : 'Fund job'}</button>}
           {job.status === 'ready' && job.selectionMode === 'proposals' && <button className="pill primary" onClick={() => openProposals(job)} disabled={saving}>Proposals ({job.proposalCount || 0})</button>}
+          {job.selectionMode === 'invite' && ['awaiting_funding', 'ready'].includes(job.status) && <><button className="pill outline" onClick={() => setReinviting(job)} disabled={saving}>{job.invitation?.status === 'pending' ? 'Invite someone else' : 'Invite a worker'}</button><button className="pill outline" onClick={() => setJobInfo({ title: 'Open this job to everyone?', paragraphs: ['Any pending invitation is withdrawn. The job moves to the funded board, where the first eligible worker can claim it.'], confirmLabel: 'Open to everyone', onConfirm: () => openToEveryone(job, 'claim') })} disabled={saving}>Open to everyone</button></>}
           {job.status === 'ready' && <button className="pill outline" onClick={() => setJobInfo({ title: 'Cancel this funded job?', paragraphs: [`${job.amount} ${job.asset} will be returned from escrow to your connected wallet. The job will be removed from the work board while the onchain refund processes.`], confirmLabel: 'Cancel job and refund', onConfirm: () => cancelFundedJob(job) })} disabled={saving}>Cancel job</button>}
         </div>
       </article>)}</div>
@@ -666,6 +738,11 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
     {feedback && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="create-job-modal-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="create-job-modal-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
     {voiceDialog && <div className="workspace-overlay"><section className={`workspace-modal ${['listening', 'recording', 'transcribing'].includes(voiceDialog.kind) ? 'loading' : voiceDialog.kind === 'done' ? 'success' : voiceDialog.kind === 'unavailable' || voiceDialog.kind === 'firefox-consent' ? 'info' : 'error'}`} role="dialog" aria-modal="true" aria-labelledby="voice-dialog-title"><span className="workspace-modal-symbol" aria-hidden="true">{['listening', 'recording', 'transcribing'].includes(voiceDialog.kind) ? <i /> : voiceDialog.kind === 'done' ? '✓' : voiceDialog.kind === 'unavailable' || voiceDialog.kind === 'firefox-consent' ? 'i' : '!'}</span><h2 id="voice-dialog-title">{voiceDialog.title}</h2><p>{voiceDialog.message}</p>{voiceDialog.kind === 'firefox-consent' ? <div className="workflow-dialog-actions"><button className="pill outline" onClick={() => setVoiceDialog(null)}>Cancel</button><button className="pill primary" onClick={confirmFirefoxVoiceCapture}>Continue</button></div> : ['listening', 'recording'].includes(voiceDialog.kind) ? <button className="pill primary" onClick={stopVoiceCapture}>Stop recording</button> : voiceDialog.kind === 'transcribing' ? null : <button className="pill primary" onClick={() => setVoiceDialog(null)}>Got it</button>}</section></div>}
     <InformationDialog info={jobInfo} onClose={() => setJobInfo(null)} />
+    {reinviting && <div className="workspace-overlay"><section className="workspace-modal workspace-information workflow-dialog" role="dialog" aria-modal="true" aria-labelledby="reinvite-dialog-title">
+      <span className="workspace-modal-symbol" aria-hidden="true">✉</span><h2 id="reinvite-dialog-title">Invite a worker</h2><p>{reinviting.title} · {reinviting.amount} {reinviting.asset}</p><p>Only this wallet will see the job. Sending a new invitation withdraws any earlier one.</p>
+      <form onSubmit={sendInvitation}><label>Worker wallet<input name="wallet" required pattern="0x[a-fA-F0-9]{40}" autoComplete="off" spellCheck="false" placeholder="0x…" /></label><label>Note to the worker <small>Optional</small><textarea name="message" rows="2" maxLength="1000" /></label>
+        <div className="workflow-dialog-actions"><button type="button" className="pill outline" onClick={() => setReinviting(null)} disabled={saving}>Cancel</button><button type="submit" className="pill primary" disabled={saving}>Send invitation</button></div></form>
+    </section></div>}
     {reviewing && <div className="workspace-overlay"><section className="workspace-modal workspace-information workflow-dialog proposals-dialog" role="dialog" aria-modal="true" aria-labelledby="proposals-dialog-title">
       <span className="workspace-modal-symbol" aria-hidden="true">✎</span><h2 id="proposals-dialog-title">Proposals</h2><p>{reviewing.job.title} · {reviewing.job.amount} {reviewing.job.asset}</p>
       {reviewing.proposals.filter(item => item.status === 'pending').length === 0 && <p>No proposals are waiting yet. Workers see this job on the funded board with a Send proposal button. Check back soon.</p>}

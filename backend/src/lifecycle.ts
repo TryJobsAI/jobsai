@@ -45,6 +45,8 @@ export function assertClaimable(job: ClaimableJob, actorId: string, now = new Da
     throw new ApiError(409, "job_deadline_passed", "This job's deadline has passed.");
   if (job.selection_mode === "proposals")
     throw new ApiError(409, "job_requires_proposal", "The client is choosing from proposals for this job. Send a proposal instead of claiming it.");
+  if (job.selection_mode === "invite")
+    throw new ApiError(409, "job_invite_only", "This job is reserved for a worker the client invited.");
 }
 
 export function assertCanUnclaim(job: UnclaimableJob, actorId: string) {
