@@ -1,15 +1,30 @@
 (() => {
   const root = document.querySelector('#worker-public-root');
   const el = (tag, text, className) => { const node = document.createElement(tag); if (text != null) node.textContent = text; if (className) node.className = className; return node; };
-  const slug = new URLSearchParams(location.search).get('slug');
-  if (!slug) { root.replaceChildren(el('section', undefined, 'worker-public-card'), el('h1', 'Profile not found')); return; }
-  JobsAIAPI.publicWorkerProfile(slug).then(({ data: profile }) => {
+  const params = new URLSearchParams(location.search);
+  const slug = params.get('slug');
+  const tag = params.get('tag');
+  const loadProfile = slug
+    ? JobsAIAPI.publicWorkerProfile(slug).then(({ data }) => renderProfile(data, data.userTag))
+    : tag
+      ? JobsAIAPI.publicUserTag(tag).then(async ({ data: identity }) => identity.workerProfileSlug
+        ? renderProfile((await JobsAIAPI.publicWorkerProfile(identity.workerProfileSlug)).data, identity.userTag)
+        : renderBasicIdentity(identity))
+      : Promise.reject(new Error('Open a profile link from JobsAI.'));
+  loadProfile.catch(error => {
+    const card = el('section', undefined, 'worker-public-card');
+    card.append(el('span', 'JOBS AI PROFILE', 'eyebrow'), el('h1', 'Profile not found'), el('p', error.message || 'This profile may be private or awaiting review.'));
+    root.replaceChildren(card);
+  });
+
+  function renderProfile(profile, userTag) {
     document.title = `${profile.fullName} · JobsAI worker`;
     const card = el('section', undefined, 'worker-public-card');
     const heading = el('div', undefined, 'worker-public-heading');
     const eyebrow = el('span', 'JOBS AI WORKER', 'eyebrow');
     const title = el('h1', profile.fullName);
     heading.append(eyebrow, title);
+    if (userTag) heading.append(el('span', `@${userTag}`, 'worker-user-tag'));
     if (profile.verified) heading.append(el('span', '✓ JobsAI approved', 'worker-verified-badge'));
     card.append(heading, el('p', `${profile.country} · ${profile.timeZone}`, 'worker-public-location'));
     card.append(el('h2', 'Working hours'), el('p', profile.workHours));
@@ -35,11 +50,14 @@
     } else historySection.append(el('p', 'Completed work will appear here after a job is settled.'));
     card.append(historySection);
     root.replaceChildren(card);
-  }).catch(error => {
+  }
+
+  function renderBasicIdentity(identity) {
+    document.title = `@${identity.userTag} · JobsAI`;
     const card = el('section', undefined, 'worker-public-card');
-    card.append(el('span', 'JOBS AI WORKER', 'eyebrow'), el('h1', 'Profile not found'), el('p', error.message || 'This profile may be private or awaiting review.'));
+    card.append(el('span', 'JOBS AI PROFILE', 'eyebrow'), el('h1', `@${identity.userTag}`), el('p', 'This wallet has a JobsAI usertag. Its public worker profile is not available yet. Buyer profiles are coming soon.'));
     root.replaceChildren(card);
-  });
+  }
   function duration(seconds) {
     if (seconds == null) return 'Not enough completed work yet';
     if (seconds < 60) return 'Under a minute';

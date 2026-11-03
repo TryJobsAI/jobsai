@@ -19,7 +19,7 @@ export const invitationInputSchema = z.object({
 }).strict();
 
 type InvitationRow = {
-  id: string; job_id: string; message: string | null; created_at: Date; client_wallet: string;
+  id: string; job_id: string; message: string | null; created_at: Date; client_wallet: string; client_user_tag: string | null;
   title: string; description: string; acceptance_criteria: string[]; category: string;
   asset: "eth" | "usdg"; amount_raw: string; deadline_at: Date | null; funded_at: Date | null;
 };
@@ -32,6 +32,7 @@ function presentInvitation(row: InvitationRow) {
     job: {
       id: row.job_id,
       clientWallet: row.client_wallet,
+      clientUserTag: row.client_user_tag,
       title: row.title,
       description: row.description,
       acceptanceCriteria: row.acceptance_criteria,
@@ -47,7 +48,7 @@ function presentInvitation(row: InvitationRow) {
 // Only funded invitations are shown; an unfunded job could still be changed or abandoned.
 invitationsRouter.get("/invitations/mine", requireAuth, asyncRoute(async (request, response) => {
   const result = await db.query<InvitationRow>(
-    `SELECT i.id,i.job_id,i.message,i.created_at,c.wallet_address AS client_wallet,j.title,j.description,j.acceptance_criteria,
+    `SELECT i.id,i.job_id,i.message,i.created_at,c.wallet_address AS client_wallet,c.user_tag AS client_user_tag,j.title,j.description,j.acceptance_criteria,
             j.category,j.asset,j.amount_raw::text,j.deadline_at,j.funded_at
        FROM job_invitations i JOIN jobs j ON j.id=i.job_id JOIN users c ON c.id=j.client_id
       WHERE i.invitee_wallet=$1 AND i.status='pending' AND j.status='ready' AND j.selection_mode='invite'
@@ -81,8 +82,9 @@ invitationsRouter.post(
         "INSERT INTO job_invitations (job_id,client_id,invitee_wallet,message) VALUES ($1,$2,$3,$4) RETURNING id",
         [id, request.auth!.userId, input.wallet, input.message ?? null]);
       await appendEvent(client, id, request.auth!.userId, "job.worker_invited", { invitationId: inserted.rows[0].id, wallet: input.wallet });
+      const invitee = await client.query<{ user_tag: string | null }>("SELECT user_tag FROM users WHERE wallet_address=$1", [input.wallet]);
       await client.query("COMMIT");
-      response.status(201).json({ data: { id: inserted.rows[0].id, jobId: id, wallet: input.wallet, status: "pending" } });
+      response.status(201).json({ data: { id: inserted.rows[0].id, jobId: id, wallet: input.wallet, userTag: invitee.rows[0]?.user_tag ?? null, status: "pending" } });
     } catch (error) { await client.query("ROLLBACK"); throw error; }
     finally { client.release(); }
   }),

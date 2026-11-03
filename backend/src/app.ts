@@ -19,6 +19,7 @@ import { MAX_SPEECH_AUDIO_BYTES, transcribeSpeech } from "./speech.js";
 import { masterRouter } from "./master-auth.js";
 import { workerApplicationsAdminRouter, workerProfilesRouter } from "./worker-profiles.js";
 import { buyerJobsRouter, buyerKeysRouter } from "./buyer-api.js";
+import { userTagsRouter } from "./user-tags.js";
 
 const app = express();
 app.set("trust proxy", config.TRUST_PROXY);
@@ -127,6 +128,7 @@ app.use("/v1/agents", agentsRouter);
 app.use("/v1/agent-runtime", agentRuntimeRouter);
 app.use("/v1/team", teamJobsRouter);
 app.use("/v1/workers", workerProfilesRouter);
+app.use("/v1/user-tags", userTagsRouter);
 app.use("/v1/master", masterRouter);
 app.use("/v1/master/worker-applications", workerApplicationsAdminRouter);
 app.use("/v1/buyer/keys", buyerKeysRouter);

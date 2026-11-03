@@ -11,10 +11,10 @@
   <link rel="stylesheet" href="brand.css?v=e2c8a539d9">
   <link rel="stylesheet" href="dashboard.css?v=98f2191fc3">
   <link rel="stylesheet" href="live-jobs.css?v=75d20ccea9">
-  <link rel="stylesheet" href="wallet/wallet.css?v=92cb0fda4b">
-  <script src="jobsai-api.js?v=7b5d18e968" defer></script>
-  <script src="dashboard-shell.js?v=f4649e74a1" defer></script>
-  <script type="module" src="wallet/workspace.js?v=a0bdaea4f8"></script>
+  <link rel="stylesheet" href="wallet/wallet.css?v=7d5176b0a9">
+  <script src="jobsai-api.js?v=73bcdab478" defer></script>
+  <script src="dashboard-shell.js?v=c92756f931" defer></script>
+  <script type="module" src="wallet/workspace.js?v=cce64bc7d4"></script>
 </head>
 <body class="workspace-body">
   <a class="skip" href="#workspace-main">Skip to workspace</a>
@@ -36,6 +36,7 @@
         <button data-tab="create"><span>＋</span> Create job</button>
         <button data-tab="agents"><span>✦</span> Agent Workers</button>
         <button data-tab="profile"><span>◎</span> Profile</button>
+        <button data-tab="settings"><span>⚙</span> Settings</button>
       </nav>
       <div class="workspace-career-group">
         <span class="eyebrow">JobsAI Career</span>
@@ -84,6 +85,10 @@
       <section data-panel="profile" hidden>
         <div class="workspace-title"><div><span class="eyebrow">YOUR DETAILS AND WORK</span><h1>Profile.</h1><p>Set up your worker profile or manage buyer access.</p></div></div>
         <div id="profile-root"></div>
+      </section>
+      <section data-panel="settings" hidden>
+        <div class="workspace-title"><div><span class="eyebrow">ACCOUNT ACCESS</span><h1>Settings.</h1></div></div>
+        <div id="buyer-api-settings-root"></div>
       </section>
     </main>
     <aside class="dashboard-rail" aria-label="Your next steps">

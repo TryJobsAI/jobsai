@@ -31,13 +31,13 @@ export const serviceOrderSchema = z.object({
 }).strict();
 
 type ServiceRow = {
-  id: string; provider_id: string; provider_wallet: string; agent_id: string | null; agent_name: string | null;
+  id: string; provider_id: string; provider_wallet: string; provider_user_tag: string | null; agent_id: string | null; agent_name: string | null;
   name: string; summary: string; description: string; category: string; acceptance_criteria: string[];
   asset: "eth" | "usdg"; amount_raw: string; delivery_days: number; active: boolean; created_at: Date;
   completed_jobs: number;
 };
 
-const serviceSelect = `SELECT sv.*,u.wallet_address AS provider_wallet,a.name AS agent_name,
+const serviceSelect = `SELECT sv.*,u.wallet_address AS provider_wallet,u.user_tag AS provider_user_tag,a.name AS agent_name,
     (SELECT count(*)::int FROM jobs j WHERE j.service_id=sv.id AND j.status='completed') AS completed_jobs
   FROM services sv JOIN users u ON u.id=sv.provider_id LEFT JOIN ai_agents a ON a.id=sv.agent_id`;
 
@@ -45,6 +45,7 @@ export function presentService(service: ServiceRow) {
   return {
     id: service.id,
     providerWallet: service.provider_wallet,
+    providerUserTag: service.provider_user_tag,
     agent: service.agent_id ? { id: service.agent_id, name: service.agent_name } : null,
     workerType: service.agent_id ? "ai" : "human",
     name: service.name,

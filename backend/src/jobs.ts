@@ -23,8 +23,10 @@ type JobRow = {
   id: string;
   client_id: string;
   client_wallet: string;
+  client_user_tag: string | null;
   doer_id: string | null;
   doer_wallet: string | null;
+  doer_user_tag: string | null;
   doer_agent_id: string | null;
   doer_agent_name: string | null;
   title: string;
@@ -58,19 +60,23 @@ type JobRow = {
   source_file_url: string | null;
   proposal_count: number;
   invitation_wallet: string | null;
+  invitation_user_tag: string | null;
   invitation_status: string | null;
   invitation_message: string | null;
 };
 
-const jobSelect = `SELECT j.*, c.wallet_address AS client_wallet, d.wallet_address AS doer_wallet,
+const jobSelect = `SELECT j.*, c.wallet_address AS client_wallet,c.user_tag AS client_user_tag,
+    d.wallet_address AS doer_wallet,d.user_tag AS doer_user_tag,
     a.name AS doer_agent_name,
     ew.address AS escrow_address, s.status AS settlement_status, s.outcome AS settlement_outcome, s.error AS settlement_error,
     s.recipient AS settlement_recipient, s.payout_signed_tx AS settlement_payout_signed_tx,
     s.lease_until AS settlement_lease_until,
     (SELECT count(*)::int FROM job_proposals p WHERE p.job_id=j.id AND p.status='pending') AS proposal_count,
-    inv.invitee_wallet AS invitation_wallet, inv.status AS invitation_status, inv.message AS invitation_message
+    inv.invitee_wallet AS invitation_wallet, invited.user_tag AS invitation_user_tag,
+    inv.status AS invitation_status, inv.message AS invitation_message
   FROM jobs j JOIN users c ON c.id=j.client_id
   LEFT JOIN LATERAL (SELECT i.invitee_wallet,i.status,i.message FROM job_invitations i WHERE i.job_id=j.id ORDER BY i.created_at DESC LIMIT 1) inv ON true
+  LEFT JOIN users invited ON invited.wallet_address=inv.invitee_wallet
   LEFT JOIN users d ON d.id=j.doer_id
   LEFT JOIN ai_agents a ON a.id=j.doer_agent_id
   JOIN job_escrow_wallets ew ON ew.job_id=j.id
@@ -80,13 +86,15 @@ function presentJob(job: JobRow) {
   return {
     id: job.id,
     clientWallet: job.client_wallet,
+    clientUserTag: job.client_user_tag,
     doerWallet: job.doer_wallet,
+    doerUserTag: job.doer_user_tag,
     category: job.category,
     serviceId: job.service_id,
     selectionMode: job.selection_mode,
     proposalCount: job.proposal_count,
     invitation: job.selection_mode === "invite" && job.invitation_wallet
-      ? { wallet: job.invitation_wallet, status: job.invitation_status, message: job.invitation_message }
+      ? { wallet: job.invitation_wallet, userTag: job.invitation_user_tag, status: job.invitation_status, message: job.invitation_message }
       : null,
     workerType: job.doer_agent_id ? "ai" : job.doer_id ? "human" : null,
     doerAgent: job.doer_agent_id ? { id: job.doer_agent_id, name: job.doer_agent_name } : null,
@@ -676,12 +684,14 @@ jobsRouter.get(
       created_at: Date;
       submitted_by_agent_id: string | null;
       submitted_by_agent_name: string | null;
-    }>(`SELECT s.id,s.revision,s.payload_ciphertext,s.payload_digest,s.created_at,s.submitted_by_agent_id,a.name AS submitted_by_agent_name
-        FROM job_submissions s LEFT JOIN ai_agents a ON a.id=s.submitted_by_agent_id
+      submitted_by_user_tag: string | null;
+    }>(`SELECT s.id,s.revision,s.payload_ciphertext,s.payload_digest,s.created_at,s.submitted_by_agent_id,a.name AS submitted_by_agent_name,u.user_tag AS submitted_by_user_tag
+        FROM job_submissions s LEFT JOIN ai_agents a ON a.id=s.submitted_by_agent_id JOIN users u ON u.id=s.submitted_by
         WHERE s.job_id=$1 ORDER BY s.revision`, [id]);
     response.json({
-      data: rows.rows.map(({ payload_ciphertext, submitted_by_agent_id, submitted_by_agent_name, ...row }) => ({
+      data: rows.rows.map(({ payload_ciphertext, submitted_by_agent_id, submitted_by_agent_name, submitted_by_user_tag, ...row }) => ({
         ...row,
+        submittedByUserTag: submitted_by_user_tag,
         submittedByAgent: submitted_by_agent_id ? { id: submitted_by_agent_id, name: submitted_by_agent_name } : null,
         ...JSON.parse(decryptPayload(payload_ciphertext, `submission:${id}:${row.revision}`)),
       })),

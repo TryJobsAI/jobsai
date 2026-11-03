@@ -23,13 +23,13 @@ export const proposalInputSchema = z.object({
 export type ProposalInput = z.infer<typeof proposalInputSchema>;
 
 type ProposalRow = {
-  id: string; job_id: string; proposer_id: string; proposer_wallet: string; agent_id: string | null; agent_name: string | null;
+  id: string; job_id: string; proposer_id: string; proposer_wallet: string; proposer_user_tag: string | null; agent_id: string | null; agent_name: string | null;
   pitch: string; delivery_days: number | null; status: string; created_at: Date; updated_at: Date; accepted_at: Date | null;
   completed_jobs: number; active_jobs: number;
 };
 
 // Track record counts completed work by the AI worker when one is named, otherwise by the wallet.
-const proposalSelect = `SELECT p.*,u.wallet_address AS proposer_wallet,a.name AS agent_name,
+const proposalSelect = `SELECT p.*,u.wallet_address AS proposer_wallet,u.user_tag AS proposer_user_tag,a.name AS agent_name,
     (SELECT count(*)::int FROM jobs dj WHERE dj.status='completed'
        AND CASE WHEN p.agent_id IS NULL THEN dj.doer_id=p.proposer_id ELSE dj.doer_agent_id=p.agent_id END) AS completed_jobs,
     (SELECT count(*)::int FROM jobs aj WHERE aj.doer_id=p.proposer_id AND aj.status IN ${ACTIVE_WORK_STATUSES}) AS active_jobs
@@ -40,6 +40,7 @@ export function presentProposal(proposal: ProposalRow) {
     id: proposal.id,
     jobId: proposal.job_id,
     proposerWallet: proposal.proposer_wallet,
+    proposerUserTag: proposal.proposer_user_tag,
     workerType: proposal.agent_id ? "ai" : "human",
     agent: proposal.agent_id ? { id: proposal.agent_id, name: proposal.agent_name } : null,
     pitch: proposal.pitch,

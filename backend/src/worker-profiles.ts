@@ -52,13 +52,14 @@ const reviewSchema = z.object({
 type ProfileRow = {
   id: string; user_id: string; slug: string; full_name: string; country: string; time_zone: string;
   work_hours: string; email: string; phone: string; rate_tiers: unknown; public_profile: boolean;
-  status: string; review_note: string | null; submitted_at: Date; reviewed_at: Date | null;
+  status: string; review_note: string | null; submitted_at: Date; reviewed_at: Date | null; user_tag?: string | null;
 };
 
 function publicFields(profile: ProfileRow) {
   return {
     id: profile.id,
     slug: profile.slug,
+    ...(profile.user_tag ? { userTag: profile.user_tag } : {}),
     fullName: profile.full_name,
     country: profile.country,
     timeZone: profile.time_zone,
@@ -95,7 +96,7 @@ async function workStats(userId: string) {
 }
 
 workerProfilesRouter.get("/me", requireAuth, asyncRoute(async (request, response) => {
-  const selected = await db.query<ProfileRow>("SELECT * FROM worker_profiles WHERE user_id=$1", [request.auth!.userId]);
+  const selected = await db.query<ProfileRow>("SELECT wp.*,u.user_tag FROM worker_profiles wp JOIN users u ON u.id=wp.user_id WHERE wp.user_id=$1", [request.auth!.userId]);
   if (!selected.rowCount) { response.json({ data: null }); return; }
   const profile = selected.rows[0];
   response.json({ data: {
@@ -133,7 +134,7 @@ workerProfilesRouter.put("/me", requireAuth, rateLimit([
 
 workerProfilesRouter.get("/:slug", asyncRoute(async (request, response) => {
   const slug = z.string().min(1).max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).parse(request.params.slug);
-  const result = await db.query<ProfileRow>("SELECT * FROM worker_profiles WHERE slug=$1 AND status='approved' AND public_profile", [slug]);
+  const result = await db.query<ProfileRow>("SELECT wp.*,u.user_tag FROM worker_profiles wp JOIN users u ON u.id=wp.user_id WHERE wp.slug=$1 AND wp.status='approved' AND wp.public_profile", [slug]);
   const profile = result.rows[0];
   if (!profile) throw new ApiError(404, "worker_profile_not_found", "This public worker profile does not exist.");
   response.json({ data: { ...publicFields(profile), ...(await workStats(profile.user_id)) } });

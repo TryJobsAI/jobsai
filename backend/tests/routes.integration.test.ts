@@ -84,6 +84,32 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
       return { status: response.status, body: await response.json() as any };
     }
 
+    async function put(path: string, token: string, body: unknown) {
+      const response = await fetch(`${baseUrl}${path}`, {
+        method: "PUT",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      return { status: response.status, body: await response.json() as any };
+    }
+
+    const clientTag = `buyer-${randomUUID().slice(0, 8)}`;
+    const workerTag = `worker-${randomUUID().slice(0, 8)}`;
+    expect((await get("/v1/user-tags/me", clientToken)).body.data.userTag).toBeNull();
+    const assignedClientTag = await put("/v1/user-tags/me", clientToken, { userTag: clientTag.toUpperCase() });
+    expect(assignedClientTag.status).toBe(201);
+    expect(assignedClientTag.body.data.userTag).toBe(clientTag);
+    expect((await put("/v1/user-tags/me", clientToken, { userTag: clientTag })).status).toBe(200);
+    const changedTag = await put("/v1/user-tags/me", clientToken, { userTag: `changed-${randomUUID().slice(0, 8)}` });
+    expect(changedTag.status).toBe(409);
+    expect(changedTag.body.error.code).toBe("user_tag_locked");
+    const duplicateTag = await put("/v1/user-tags/me", doerToken, { userTag: clientTag });
+    expect(duplicateTag.status).toBe(409);
+    expect(duplicateTag.body.error.code).toBe("user_tag_unavailable");
+    expect((await put("/v1/user-tags/me", doerToken, { userTag: workerTag })).body.data.userTag).toBe(workerTag);
+    const publicTag = await get(`/v1/user-tags/${clientTag}`, clientToken);
+    expect(publicTag.body.data).toEqual({ userTag: clientTag, workerProfileSlug: null });
+
     const templates = await get("/v1/jobs/templates", clientToken);
     expect(templates.status).toBe(200);
     expect(templates.body.data.map((template: { id: string }) => template.id)).toContain("translation");
@@ -105,6 +131,7 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
         amount: "0.01",
       });
       expect(created.status).toBe(201);
+      expect(created.body.data.clientUserTag).toBe(clientTag);
       const id = created.body.data.id as string;
       jobIds.push(id);
       // Seed a previously verified deposit; the route test never broadcasts chain transactions.
@@ -140,6 +167,8 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
     config.PAUSE_NEW_WORK = false;
 
     expect((await request(`/v1/jobs/${first}/claim`, doerToken, {})).status).toBe(200);
+    const doerJobs = await get("/v1/jobs/mine", doerToken);
+    expect(doerJobs.body.data).toEqual(expect.arrayContaining([expect.objectContaining({ id: first, doerUserTag: workerTag, clientUserTag: clientTag })]));
 
     const concurrentClaims = await Promise.all([
       request(`/v1/jobs/${second}/claim`, doerToken, {}),
