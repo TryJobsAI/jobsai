@@ -33,3 +33,9 @@
 
 @media(max-width:1200px) and (min-width:1001px){.dashboard-header-actions{gap:14px}.header-home{display:none}.workspace-sidebar nav button{font-size:12px}.next-step-card h2{font-size:25px}.next-step-card,.rail-card{padding:18px}}
 @media(max-width:550px){.header-market{font-size:10px}.dashboard-header-actions{gap:13px}}
+/* Keep every workspace destination reachable when the sidebar is taller than the viewport. */
+.workspace-sidebar{overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#9aa8bd transparent}
+.workspace-sidebar::-webkit-scrollbar,.workspace-sidebar nav::-webkit-scrollbar{width:6px;height:6px}
+.workspace-sidebar::-webkit-scrollbar-thumb,.workspace-sidebar nav::-webkit-scrollbar-thumb{border-radius:99px;background:#9aa8bd}
+@media(max-width:800px){.workspace-sidebar{height:auto;max-height:none;overflow:visible}.workspace-sidebar nav{display:flex;flex-wrap:nowrap;justify-content:flex-start;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;scrollbar-width:thin}.workspace-sidebar nav button{flex:0 0 100px;scroll-snap-align:start}}
+@media(max-width:550px){.workspace-sidebar{height:auto;max-height:none}.workspace-sidebar nav{gap:5px}.workspace-sidebar nav button{flex-basis:76px;min-height:47px}}
