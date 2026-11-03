@@ -105,6 +105,7 @@ function MyWork({ session, walletAddress, userTag }) {
       setJobs(ownJobs);
       setLoaded(true);
       if (showLoading) setFeedback(ownJobs.length ? null : { title: 'No jobs to manage yet', message: 'Jobs you create or claim will appear here. A claimed job can be unclaimed before submitting any work.', kind: 'info' });
+      return ownJobs;
     } catch (error) {
       setLoaded(true);
       setFeedback({ title: 'Could not load your work', message: error.message || 'JobsAI could not retrieve jobs for this wallet.', kind: 'error' });
@@ -116,6 +117,16 @@ function MyWork({ session, walletAddress, userTag }) {
     const onWorkUpdated = () => refresh(false);
     document.addEventListener('jobsai:work-updated', onWorkUpdated);
     return () => document.removeEventListener('jobsai:work-updated', onWorkUpdated);
+  }, [session.token, walletAddress]);
+
+  useEffect(() => {
+    const onOpenJob = async event => {
+      const ownJobs = await refresh(false);
+      const job = ownJobs?.find(item => item.id === event.detail?.jobId);
+      if (job) openReview(job);
+    };
+    document.addEventListener('jobsai:open-job', onOpenJob);
+    return () => document.removeEventListener('jobsai:open-job', onOpenJob);
   }, [session.token, walletAddress]);
 
   async function doAction(title, message, action, successTitle, successMessage) {
@@ -1392,6 +1403,83 @@ function UserTagSetup({ session, identity, onSet, onRetry }) {
   return <div className="workspace-overlay"><section className="workspace-modal workspace-information user-tag-setup" role="dialog" aria-modal="true" aria-labelledby="usertag-setup-title"><span className="workspace-modal-symbol" aria-hidden="true">@</span><h2 id="usertag-setup-title">Choose your JobsAI usertag</h2><p>This is your public identity on JobsAI. People can click it from jobs, proposals, services, and submissions to view your profile.</p><form onSubmit={save}><label>Usertag<input required minLength="3" maxLength="24" pattern="[a-zA-Z0-9][a-zA-Z0-9_-]{2,23}" autoComplete="off" spellCheck="false" value={value} onChange={event => setValue(event.target.value)} placeholder="yourname" /></label><small>3–24 letters, numbers, underscores, or hyphens. One usertag per wallet; it cannot be changed.</small><button className="pill primary" type="submit" disabled={busy}>Set my usertag</button></form></section></div>;
 }
 
+function ActivityInbox({ session }) {
+  const [items, setItems] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [cursor, setCursor] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const badge = document.getElementById('activity-unread-badge');
+    if (badge) {
+      badge.hidden = unreadCount < 1;
+      badge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
+      badge.setAttribute('aria-label', `${unreadCount} unread updates`);
+    }
+  }, [unreadCount]);
+
+  async function load(before = null, append = false) {
+    if (append) setLoadingMore(true);
+    try {
+      const result = await JobsAIAPI.activity(session.token, { limit: 30, before });
+      setItems(current => append ? [...current, ...(result.data || [])] : (result.data || []));
+      setUnreadCount(Number(result.unreadCount || 0));
+      setCursor(result.nextCursor || null);
+      setLoaded(true);
+    } catch (reason) {
+      setError({ title: 'Could not load activity', message: reason.message || 'JobsAI could not retrieve your updates.' });
+    } finally { setLoadingMore(false); }
+  }
+
+  useEffect(() => {
+    void load();
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 60_000);
+    return () => clearInterval(timer);
+  }, [session.token]);
+
+  async function markAllRead() {
+    try {
+      await JobsAIAPI.markAllActivityRead(session.token);
+      setItems(current => current.map(item => ({ ...item, read: true })));
+      setUnreadCount(0);
+    } catch (reason) {
+      setError({ title: 'Could not update activity', message: reason.message || 'Try again in a moment.' });
+    }
+  }
+
+  async function openItem(item) {
+    if (!item.read) {
+      try {
+        await JobsAIAPI.markActivityRead([item.eventId], session.token);
+        setItems(current => current.map(entry => entry.eventId === item.eventId ? { ...entry, read: true } : entry));
+        setUnreadCount(value => Math.max(0, value - 1));
+      } catch (reason) {
+        setError({ title: 'Could not update activity', message: reason.message || 'Try again in a moment.' });
+        return;
+      }
+    }
+    document.querySelector(`[data-tab="${item.tab}"]`)?.click();
+    document.dispatchEvent(new CustomEvent('jobsai:open-job', { detail: { jobId: item.jobId } }));
+  }
+
+  return <>
+    <section className="activity-inbox" aria-label="Job activity">
+      <div className="activity-toolbar"><div><strong>{unreadCount}</strong> unread</div><div className="activity-actions"><button className="pill outline" onClick={() => void load()} disabled={!loaded}>Refresh</button><button className="pill outline" onClick={markAllRead} disabled={!unreadCount}>Mark all read</button></div></div>
+      {!loaded && !error && <div className="activity-empty">Loading your updates…</div>}
+      {loaded && items.length === 0 && <div className="activity-empty"><span aria-hidden="true">◷</span><h2>You’re all caught up</h2><p>Updates about your jobs will appear here.</p></div>}
+      {items.length > 0 && <div className="activity-list">{items.map(item => <button key={item.eventId} className={`activity-item${item.read ? '' : ' is-unread'}`} onClick={() => void openItem(item)}>
+        <span className="activity-indicator" aria-hidden="true">{item.read ? '✓' : '•'}</span>
+        <span className="activity-copy"><strong>{item.label}</strong><span className="activity-job-title">{item.jobTitle}</span><small>{item.actor ? `${item.actor} · ` : ''}<time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time></small></span>
+        <span className="activity-open" aria-hidden="true">↗</span>
+      </button>)}</div>}
+      {cursor && <div className="activity-load-more"><button className="pill outline" onClick={() => void load(cursor, true)} disabled={loadingMore}>{loadingMore ? 'Loading…' : 'Load older updates'}</button></div>}
+    </section>
+    {error && <div className="workspace-overlay"><section className="workspace-modal error" role="alertdialog" aria-modal="true" aria-labelledby="activity-error-title"><span className="workspace-modal-symbol" aria-hidden="true">!</span><h2 id="activity-error-title">{error.title}</h2><p>{error.message}</p><div className="workflow-dialog-actions"><button className="pill outline" onClick={() => setError(null)}>Close</button><button className="pill primary" onClick={() => { setError(null); void load(); }}>Try again</button></div></section></div>}
+  </>;
+}
+
 function WorkspaceContext() {
   const { address, chainId, isConnected, isReconnecting } = useAccount();
   const { disconnectAsync } = useDisconnect();
@@ -1408,6 +1496,7 @@ function WorkspaceContext() {
   const profileRoot = document.getElementById('profile-root');
   const buyerApiSettingsRoot = document.getElementById('buyer-api-settings-root');
   const adminNavRoot = document.getElementById('admin-nav-root');
+  const activityRoot = document.getElementById('activity-root');
 
   useEffect(() => {
     if (!session?.token) { setIsAdmin(false); return; }
@@ -1447,10 +1536,11 @@ function WorkspaceContext() {
     goToAuth();
   }
 
-  if (!header || !jobsRoot || !workRoot || !createJobRoot || !agentsRoot || !servicesCatalogRoot || !profileRoot || !buyerApiSettingsRoot || !adminNavRoot || !session?.token) return null;
+  if (!header || !jobsRoot || !workRoot || !createJobRoot || !agentsRoot || !servicesCatalogRoot || !profileRoot || !buyerApiSettingsRoot || !adminNavRoot || !activityRoot || !session?.token) return null;
   return <>
     {createPortal(<><ConnectButton.Custom>{({ account, openAccountModal, mounted }) => <><a className="workspace-header-usertag" href={identity.userTag ? `worker.html?tag=${encodeURIComponent(identity.userTag)}` : undefined} aria-label={identity.userTag ? `Open @${identity.userTag} profile` : undefined}>{identity.userTag ? `@${identity.userTag}` : null}</a><button className="workspace-account-button" onClick={openAccountModal} disabled={!mounted || !account} aria-label={`Connected wallet ${account?.displayName || ''}`}><span className="workspace-account-status" />{account?.displayName || 'Connected wallet'}</button></>}</ConnectButton.Custom><button className="workspace-signout" onClick={signOut}>Sign out</button></>, header)}
     {createPortal(<FundedJobs session={session} />, jobsRoot)}
+    {createPortal(<ActivityInbox session={session} />, activityRoot)}
     {createPortal(<MyWork session={session} walletAddress={address} userTag={identity.userTag} />, workRoot)}
     {createPortal(<CreateJobPanel session={session} walletAddress={address} chainId={chainId} />, createJobRoot)}
     {createPortal(<AgentManagement session={session} />, agentsRoot)}

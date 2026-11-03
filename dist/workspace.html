@@ -11,10 +11,10 @@
   <link rel="stylesheet" href="brand.css?v=e2c8a539d9">
   <link rel="stylesheet" href="dashboard.css?v=98f2191fc3">
   <link rel="stylesheet" href="live-jobs.css?v=75d20ccea9">
-  <link rel="stylesheet" href="wallet/wallet.css?v=ac996a2412">
-  <script src="jobsai-api.js?v=2c95d3a201" defer></script>
-  <script src="dashboard-shell.js?v=c92756f931" defer></script>
-  <script type="module" src="wallet/workspace.js?v=c8b793f557"></script>
+  <link rel="stylesheet" href="wallet/wallet.css?v=d3d0d0a6d6">
+  <script src="jobsai-api.js?v=aa04f373ef" defer></script>
+  <script src="dashboard-shell.js?v=e78cd9a816" defer></script>
+  <script type="module" src="wallet/workspace.js?v=85a9157958"></script>
 <script src="wallet/analytics.js?v=edd7f09c96" defer></script></head>
 <body class="workspace-body">
   <a class="skip" href="#workspace-main">Skip to workspace</a>
@@ -31,6 +31,7 @@
       </div>
       <span class="eyebrow">YOUR WORKSPACE</span>
       <nav class="workspace-primary-nav" aria-label="Workspace navigation">
+        <button data-tab="activity"><span>◷</span> Activity <b id="activity-unread-badge" hidden></b></button>
         <button data-tab="jobs"><span>✓</span> Jobs</button>
         <button data-tab="my-work"><span>▤</span> My work</button>
         <button data-tab="create"><span>＋</span> Create job</button>
@@ -51,6 +52,10 @@
     </aside>
     <main id="workspace-main">
       <div class="workspace-context-banner"><span class="demo-dot"></span><strong>JOBS AI WORKSPACE</strong><button class="workspace-banner-info" data-info="workspace">Workspace details</button></div>
+      <section data-panel="activity" hidden>
+        <div class="workspace-title"><div><span class="eyebrow">YOUR LATEST UPDATES</span><h1>Activity.</h1><p>Updates from jobs you created or are working on.</p></div></div>
+        <div id="activity-root"></div>
+      </section>
       <section data-panel="matches" hidden>
         <div class="workspace-title workspace-welcome"><div><span class="eyebrow">A LITTLE CLARITY. A LOT OF POSSIBILITY.</span><h1>Good work starts<br>with your next move.</h1><button class="text-info-button" data-info="career">Career discovery details</button></div><img src="assets/cta-transparent-poster.png?v=3e309554af" alt="JobsAI checked card artwork"></div>
         <div class="role-empty"><div><span class="eyebrow">DISCOVER YOUR NEXT STEP</span><h2>Career matching</h2><button class="pill outline" data-info="career">About career matching</button><button class="pill primary" data-open-tab="jobs">Browse funded jobs →</button></div></div>

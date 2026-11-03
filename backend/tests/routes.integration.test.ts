@@ -142,7 +142,7 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
       return id;
     }
 
-    const [first, second, third, fourth, cancellation, disputed, payoutFailure, releaseJob, acceptanceJob] = await Promise.all([
+    const [first, second, third, fourth, cancellation, disputed, payoutFailure, releaseJob, acceptanceJob, activityJob] = await Promise.all([
       createFundedReadyJob("Claim cap one"),
       createFundedReadyJob("Claim cap two"),
       createFundedReadyJob("Concurrent claim three"),
@@ -152,7 +152,31 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
       createFundedReadyJob("Recover failed payout"),
       createFundedReadyJob("Client release and claim expiry"),
       createFundedReadyJob("Client acceptance remains available during pause"),
+      createFundedReadyJob("Activity inbox access boundaries"),
     ]);
+
+    await db.query("UPDATE jobs SET doer_id=$2 WHERE id=$1", [activityJob, idsByWallet.get(doerWallet)]);
+    const doerActivity = await db.query<{ id: string }>(
+      "INSERT INTO job_events(job_id,actor_id,event_type) VALUES($1,$2,'job.submitted') RETURNING id::text AS id",
+      [activityJob, idsByWallet.get(doerWallet)],
+    );
+    const clientInbox = await get("/v1/activity", clientToken);
+    expect(clientInbox.status).toBe(200);
+    expect(clientInbox.body.data).toEqual(expect.arrayContaining([expect.objectContaining({
+      eventId: doerActivity.rows[0].id, jobId: activityJob, jobTitle: "Activity inbox access boundaries", eventType: "job.submitted", read: false,
+    })]));
+    expect(clientInbox.body.unreadCount).toBeGreaterThanOrEqual(1);
+    const doerOwnEvent = await get("/v1/activity", doerToken);
+    expect(doerOwnEvent.body.data).not.toEqual(expect.arrayContaining([expect.objectContaining({ eventId: doerActivity.rows[0].id })]));
+    const unrelatedInbox = await get("/v1/activity", disputeDoerToken);
+    expect(unrelatedInbox.body.data).not.toEqual(expect.arrayContaining([expect.objectContaining({ eventId: doerActivity.rows[0].id })]));
+    const markedRead = await request("/v1/activity/read", clientToken, { eventIds: [doerActivity.rows[0].id] });
+    expect(markedRead.status).toBe(200);
+    const readInbox = await get("/v1/activity", clientToken);
+    expect(readInbox.body.data.find((item: { eventId: string }) => item.eventId === doerActivity.rows[0].id).read).toBe(true);
+    const markedAll = await request("/v1/activity/read-all", clientToken, {});
+    expect(markedAll.status).toBe(200);
+    expect((await get("/v1/activity", clientToken)).body.unreadCount).toBe(0);
 
     config.PAUSE_NEW_WORK = true;
     const pausedCreation = await request("/v1/jobs", clientToken, {

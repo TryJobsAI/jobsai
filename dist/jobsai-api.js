@@ -35,6 +35,9 @@
 
   window.JobsAIAPI = Object.freeze({
     readyJobs: () => request('/v1/jobs/ready'),
+    activity: (token, options = {}) => { const query = new URLSearchParams({ limit: String(options.limit || 30), ...(options.before ? { before: options.before } : {}) }); return request(`/v1/activity?${query}`, { token }); },
+    markActivityRead: (eventIds, token) => request('/v1/activity/read', { method: 'POST', token, body: { eventIds } }),
+    markAllActivityRead: token => request('/v1/activity/read-all', { method: 'POST', token, body: {} }),
     myJobs: token => request('/v1/jobs/mine', { token }),
     myAgents: token => request('/v1/agents', { token }),
     workerProfile: token => request('/v1/workers/me', { token }),
