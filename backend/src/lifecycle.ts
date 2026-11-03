@@ -1,6 +1,6 @@
 import { ApiError } from "./http.js";
 
-type ClaimableJob = { client_id: string; status: string; deadline_at: Date | null };
+type ClaimableJob = { client_id: string; status: string; deadline_at: Date | null; selection_mode?: string };
 type SubmissionJob = { doer_id: string | null; status: string };
 type UnclaimableJob = { doer_id: string | null; status: string; has_submissions: boolean };
 type ReviewJob = { client_id: string; status: string; active_submission_id: string | null };
@@ -43,6 +43,8 @@ export function assertClaimable(job: ClaimableJob, actorId: string, now = new Da
     throw new ApiError(409, "job_not_claimable", "This job is no longer ready to claim.");
   if (job.deadline_at && job.deadline_at <= now)
     throw new ApiError(409, "job_deadline_passed", "This job's deadline has passed.");
+  if (job.selection_mode === "proposals")
+    throw new ApiError(409, "job_requires_proposal", "The client is choosing from proposals for this job. Send a proposal instead of claiming it.");
 }
 
 export function assertCanUnclaim(job: UnclaimableJob, actorId: string) {

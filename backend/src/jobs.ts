@@ -53,13 +53,16 @@ type JobRow = {
   settlement_payout_signed_tx?: string | null;
   settlement_lease_until?: Date | null;
   service_id: string | null;
+  selection_mode: "claim" | "proposals";
+  proposal_count: number;
 };
 
 const jobSelect = `SELECT j.*, c.wallet_address AS client_wallet, d.wallet_address AS doer_wallet,
     a.name AS doer_agent_name,
     ew.address AS escrow_address, s.status AS settlement_status, s.outcome AS settlement_outcome, s.error AS settlement_error,
     s.recipient AS settlement_recipient, s.payout_signed_tx AS settlement_payout_signed_tx,
-    s.lease_until AS settlement_lease_until
+    s.lease_until AS settlement_lease_until,
+    (SELECT count(*)::int FROM job_proposals p WHERE p.job_id=j.id AND p.status='pending') AS proposal_count
   FROM jobs j JOIN users c ON c.id=j.client_id
   LEFT JOIN users d ON d.id=j.doer_id
   LEFT JOIN ai_agents a ON a.id=j.doer_agent_id
@@ -73,6 +76,8 @@ function presentJob(job: JobRow) {
     doerWallet: job.doer_wallet,
     category: job.category,
     serviceId: job.service_id,
+    selectionMode: job.selection_mode,
+    proposalCount: job.proposal_count,
     workerType: job.doer_agent_id ? "ai" : job.doer_id ? "human" : null,
     doerAgent: job.doer_agent_id ? { id: job.doer_agent_id, name: job.doer_agent_name } : null,
     title: job.title,
@@ -100,7 +105,7 @@ function presentJob(job: JobRow) {
   };
 }
 
-async function appendEvent(
+export async function appendEvent(
   client: { query: (text: string, values?: any[]) => Promise<any> },
   jobId: string,
   actorId: string | null,
@@ -121,6 +126,7 @@ export type NewJobRecord = {
   asset: JobAsset;
   amountRaw: bigint;
   deadlineAt: Date | null;
+  selectionMode?: "claim" | "proposals";
   service?: { id: string; providerId: string; agentId: string | null };
 };
 
@@ -137,8 +143,8 @@ export async function createJobRecord(clientId: string, job: NewJobRecord) {
     );
     if (Number(recent.rows[0].count) >= 10) throw new ApiError(429, "job_creation_rate_limited", "You have reached the job creation limit. Try again later.");
     await client.query(
-      `INSERT INTO jobs (id,client_id,title,description,acceptance_criteria,asset,amount_raw,token_address,deadline_at,category,service_id,reserved_doer_id,reserved_agent_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      `INSERT INTO jobs (id,client_id,title,description,acceptance_criteria,asset,amount_raw,token_address,deadline_at,category,service_id,reserved_doer_id,reserved_agent_id,selection_mode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
       [
         id,
         clientId,
@@ -153,6 +159,7 @@ export async function createJobRecord(clientId: string, job: NewJobRecord) {
         job.service?.id ?? null,
         job.service?.providerId ?? null,
         job.service?.agentId ?? null,
+        job.service ? "claim" : job.selectionMode ?? "claim",
       ],
     );
     await client.query(
@@ -163,6 +170,7 @@ export async function createJobRecord(clientId: string, job: NewJobRecord) {
       asset: job.asset,
       amountRaw: job.amountRaw.toString(),
       ...(job.service ? { serviceId: job.service.id } : {}),
+      ...(job.selectionMode === "proposals" ? { selectionMode: "proposals" } : {}),
     });
     const created = await client.query<JobRow>(`${jobSelect} WHERE j.id=$1`, [id]);
     await client.query("COMMIT");
@@ -199,6 +207,11 @@ export async function assignFundedServiceOrder(client: PoolClient, jobId: string
   return "in_progress";
 }
 
+// A chosen proposal stops counting once its job goes back to the board.
+export async function releaseAcceptedProposal(client: { query: (text: string, values?: any[]) => Promise<any> }, jobId: string) {
+  await client.query("UPDATE job_proposals SET status='released',updated_at=now() WHERE job_id=$1 AND status='accepted'", [jobId]);
+}
+
 export async function releaseExpiredClaims() {
   let released = 0;
   for (let batch = 0; batch < 5; batch++) {
@@ -209,6 +222,7 @@ export async function releaseExpiredClaims() {
            AND j.claimed_at<=now()-($1::int*interval '1 hour')
            AND NOT EXISTS (SELECT 1 FROM job_submissions sub WHERE sub.job_id=j.id)
            AND (j.service_id IS NULL OR j.doer_id IS DISTINCT FROM j.reserved_doer_id)
+           AND NOT EXISTS (SELECT 1 FROM job_proposals p WHERE p.job_id=j.id AND p.proposer_id=j.doer_id AND p.status='accepted')
          ORDER BY j.claimed_at
          LIMIT 100
          FOR UPDATE SKIP LOCKED
@@ -267,6 +281,7 @@ jobsRouter.post(
       asset: input.asset,
       amountRaw: amount,
       deadlineAt: parseDeadline(request.body?.deadlineAt),
+      selectionMode: input.selectionMode,
     });
     response.status(201).json({ data: created });
   }),
@@ -394,8 +409,8 @@ jobsRouter.post(
     try {
       await client.query("BEGIN");
       await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [request.auth!.userId]);
-      const locked = await client.query<{ status: string; client_id: string; deadline_at: Date | null }>(
-        "SELECT status,client_id,deadline_at FROM jobs WHERE id=$1 FOR UPDATE",
+      const locked = await client.query<{ status: string; client_id: string; deadline_at: Date | null; selection_mode: string }>(
+        "SELECT status,client_id,deadline_at,selection_mode FROM jobs WHERE id=$1 FOR UPDATE",
         [id],
       );
       const job = locked.rows[0];
@@ -496,6 +511,7 @@ jobsRouter.post(
       if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
       assertCanUnclaim(job, request.auth!.userId);
       await client.query("UPDATE jobs SET doer_id=NULL,doer_agent_id=NULL,status='ready',claimed_at=NULL,updated_at=now() WHERE id=$1", [id]);
+      await releaseAcceptedProposal(client, id);
       await appendEvent(client, id, request.auth!.userId, "job.unclaimed");
       await client.query("COMMIT");
       response.json({ data: { jobId: id, status: "ready" } });
@@ -552,6 +568,7 @@ jobsRouter.post(
       if (job.status !== "in_progress" || !job.doer_id || job.has_submissions)
         throw new ApiError(409, "worker_not_releasable", "A worker can be released only before any work has been submitted.");
       await client.query("UPDATE jobs SET doer_id=NULL,doer_agent_id=NULL,status='ready',claimed_at=NULL,updated_at=now() WHERE id=$1", [id]);
+      await releaseAcceptedProposal(client, id);
       await appendEvent(client, id, request.auth!.userId, "job.worker_released_by_client");
       await client.query("COMMIT");
       response.json({ data: { jobId: id, status: "ready" } });
