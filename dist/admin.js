@@ -11,9 +11,9 @@
   const note = document.querySelector('#worker-admin-note');
   const confirm = document.querySelector('#worker-admin-confirm');
   const signout = document.querySelector('#worker-admin-signout');
-  const lockAdmin = document.querySelector('#admin-lock');
   const sessionKey = 'jobsai-wallet-session-v1';
   let session = readSession();
+  let teamVerified = false;
   let decision = null;
   let selected = null;
   const el = (tag, text, className) => { const node = document.createElement(tag); if (text != null) node.textContent = text; if (className) node.className = className; return node; };
@@ -27,7 +27,7 @@
     noteWrap.hidden = true; confirm.hidden = true;
     if (!dialog.open) dialog.showModal();
   }
-  function showGate() { gateRoot.hidden = false; adminWorkspace.hidden = true; signout.hidden = true; lockAdmin.hidden = true; }
+  function showGate() { gateRoot.hidden = false; adminWorkspace.hidden = true; signout.hidden = true; }
   function renderSignIn() {
     showGate(); gateRoot.replaceChildren();
     const card = el('section', undefined, 'worker-admin-card');
@@ -57,6 +57,7 @@
       try {
         await JobsAIAPI.teamLogin(input.value, session.token);
         input.value = '';
+        teamVerified = true;
         await loadAll();
         window.dispatchEvent(new Event('jobsai-team-access-changed'));
       } catch (error) { feedback('Admin access failed', error.message || 'The team password could not be verified.', 'error'); }
@@ -140,6 +141,7 @@
     try {
       const status = await JobsAIAPI.adminStatus(session.token);
       if (!status?.data?.isAdmin) { renderDenied(); return; }
+      if (!teamVerified) { renderPasswordGate(); return; }
       await JobsAIAPI.teamStatus(session.token);
     } catch (error) {
       if (error.code === 'team_password_required') { renderPasswordGate(); return; }
@@ -150,7 +152,7 @@
       card.append(el('h1', 'Could not verify admin access'), el('p', error.message || 'JobsAI could not verify this account.'));
       const retry = el('button', 'Try again', 'pill primary'); retry.addEventListener('click', loadAll); card.append(retry); gateRoot.append(card); return;
     }
-    gateRoot.hidden = true; adminWorkspace.hidden = false; signout.hidden = false; lockAdmin.hidden = false;
+    gateRoot.hidden = true; adminWorkspace.hidden = false; signout.hidden = false;
     const [usersResult, applicationsResult] = await Promise.all([
       JobsAIAPI.adminUsers(session.token), JobsAIAPI.workerApplications(session.token),
     ]);
@@ -192,12 +194,6 @@
     await JobsAIAPI.logout(session.token).catch(() => {});
     sessionStorage.removeItem(sessionKey);
     location.replace('/auth.html?next=admin.html');
-  });
-  lockAdmin.addEventListener('click', async () => {
-    lockAdmin.disabled = true;
-    try { await JobsAIAPI.teamLogout(session.token); await loadAll(); }
-    catch (error) { feedback('Could not lock admin', error.message || 'Try again.', 'error'); }
-    finally { lockAdmin.disabled = false; }
   });
   if (!session) renderSignIn();
   else loadAll().catch(error => feedback('Could not open admin', error.message || 'Try again.', 'error'));
