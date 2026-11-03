@@ -15,6 +15,12 @@ dbTest("participants get a cached, encrypted AI check of each submission", async
   const sessions = wallets.map(() => randomBytes(32).toString("base64url"));
   const users = await db.query<{ id: string }>("INSERT INTO users(wallet_address) VALUES($1),($2),($3) RETURNING id", wallets);
   const userIds = users.rows.map((row) => row.id);
+  await db.query(
+    `INSERT INTO worker_profiles(user_id,slug,full_name,country,time_zone,work_hours,email,phone,rate_tiers,status)
+     VALUES($1,$2,'CI Worker','United States','UTC','Flexible','worker@example.com','+12025550123',
+       '[{"name":"Standard","scope":"Standard writing work","asset":"eth","amount":"0.01"}]'::jsonb,'pending_review')`,
+    [userIds[1], `ai-check-worker-${randomBytes(4).toString("hex")}`],
+  );
   const [clientSession, doerSession, strangerSession] = sessions;
   await db.query(
     `INSERT INTO sessions(token_hash,user_id,expires_at) SELECT h,u,now()+interval '1 day' FROM unnest($1::text[],$2::uuid[]) AS t(h,u)`,

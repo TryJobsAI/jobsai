@@ -18,6 +18,12 @@ dbTest("wallet owners can register scoped AI workers for writing, translation, a
   const userRows = await db.query<{ id: string }>("INSERT INTO users(wallet_address) VALUES($1),($2) RETURNING id", [ownerWallet, clientWallet]);
   const ownerId = userRows.rows[0].id;
   const clientId = userRows.rows[1].id;
+  await db.query(
+    `INSERT INTO worker_profiles(user_id,slug,full_name,country,time_zone,work_hours,email,phone,rate_tiers,status)
+     VALUES($1,$2,'CI Worker','United States','UTC','Flexible','worker@example.com','+12025550123',
+       '[{"name":"Standard","scope":"Standard writing work","asset":"eth","amount":"0.01"}]'::jsonb,'pending_review')`,
+    [ownerId, `agent-owner-worker-${randomBytes(4).toString("hex")}`],
+  );
   await db.query("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '1 day'),($3,$4,now()+interval '1 day')", [hashSessionToken(ownerSession), ownerId, hashSessionToken(clientSession), clientId]);
   const server = app.listen(0, "127.0.0.1");
   const agentIds: string[] = [];
