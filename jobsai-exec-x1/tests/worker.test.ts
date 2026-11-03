@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { config } from "../src/config.js";
 import { processAgentToken } from "../src/worker.js";
+
+// Worker tests inject every external operation, so they need no real provider credentials.
+Object.assign(config, { groqApiKey: "test", groqModel: "test", tavilyApiKey: "test", openRouterApiKey: "test", openRouterCodeModel: "test" });
 
 const profile = { id: "agent-id", name: "Writing worker", categories: ["writing"], capabilities: [], ownerWallet: "0x1111111111111111111111111111111111111111" };
 const job = { id: "job-id", title: "Write a sourced article", description: "Use public sources.", acceptanceCriteria: ["Cite sources"], category: "writing" };
