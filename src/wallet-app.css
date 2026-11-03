@@ -76,3 +76,15 @@ dialog.workspace-modal{position:fixed;inset:0;margin:auto;max-height:calc(100% -
 .worker-admin-header nav{display:flex;align-items:center;gap:18px}
 .worker-admin-header nav>a{color:#175bd6;font-size:13px;font-weight:650;text-decoration:none}
 .worker-admin-header nav>a:hover{text-decoration:underline}
+.admin-workspace{max-width:1480px;margin:22px auto 60px;padding:0 20px}
+.admin-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px;padding:5px;border:1px solid #dce3ee;border-radius:13px;background:#f2f5fa}
+.admin-tabs button{padding:10px 15px;border:0;border-radius:9px;background:transparent;color:#465368;font:inherit;font-size:13px;font-weight:650;cursor:pointer}
+.admin-tabs button[aria-selected=true]{background:#fff;color:#175bd6;box-shadow:0 1px 4px #19243a18}
+.admin-workspace [hidden]{display:none!important}
+.admin-workspace #admin-management-panel>.worker-admin-main{max-width:none;margin:0;padding:0}
+.admin-password-gate{max-width:520px;margin:12vh auto 0}
+#admin-disputes-panel .team-review-page{min-height:0;padding:8px 0 32px;background:transparent}
+#admin-disputes-panel .team-review-header{display:none}
+#admin-disputes-panel .team-review-title{max-width:none;margin:10px 0 24px}
+#admin-disputes-panel .team-review-layout{max-width:none}
+@media(max-width:650px){.admin-workspace{margin:12px auto 40px;padding:0 14px}.admin-tabs{display:grid;grid-template-columns:1fr}.admin-tabs button{text-align:left}}

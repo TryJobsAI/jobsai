@@ -51,7 +51,8 @@ dbTest("worker profiles require review, publish safely, expose completed work me
         },
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
       });
-      return { status: result.status, body: result.status === 204 ? null : await result.json() as any, cookie: result.headers.get("set-cookie") };
+      const cookies = typeof result.headers.getSetCookie === "function" ? result.headers.getSetCookie() : (result.headers.get("set-cookie") || "").split(/,\s*(?=jobsai_team_session=)/);
+      return { status: result.status, body: result.status === 204 ? null : await result.json() as any, cookies };
     }
     const application = {
       fullName: "Morgan Worker", country: "Ghana", timeZone: "Africa/Accra", workHours: "Weekdays, 09:00–17:00 GMT",
@@ -75,24 +76,32 @@ dbTest("worker profiles require review, publish safely, expose completed work me
     expect((await call("/v1/admin/me", { token: workerToken })).body.data).toMatchObject({ isAdmin: true, userTag: workerTag });
     expect((await call("/v1/admin/me", { token: outsiderToken })).body.data.isAdmin).toBe(false);
     expect((await call("/v1/admin/worker-applications", { token: outsiderToken })).status).toBe(403);
+    expect((await call("/v1/admin/users", { token: workerToken })).body.error.code).toBe("team_password_required");
+    const teamLogin = await call("/v1/team/auth/login", { token: workerToken, method: "POST", body: { password: process.env.JOBSAI_TEAM_PASSWORD } });
+    expect(teamLogin.status).toBe(200);
+    const adminCookie = teamLogin.cookies.map(value => value.split(";")[0]).filter(value => value.startsWith("jobsai_team_session=") && value.length > "jobsai_team_session=".length).at(-1);
+    expect(adminCookie).toBeTruthy();
 
-    const addedAdmin = await call("/v1/admin/users", { token: workerToken, method: "POST", body: { userTag: clientTag } });
+    const addedAdmin = await call("/v1/admin/users", { token: workerToken, cookie: adminCookie, method: "POST", body: { userTag: clientTag } });
     expect(addedAdmin.status).toBe(201);
     expect((await call("/v1/admin/me", { token: outsiderToken })).body.data.isAdmin).toBe(true);
-    expect((await call("/v1/admin/users", { token: workerToken })).body.data).toEqual(expect.arrayContaining([expect.objectContaining({ userTag: clientTag })]));
-    expect((await call(`/v1/admin/users/${clientTag}`, { token: workerToken, method: "DELETE" })).status).toBe(204);
+    expect((await call("/v1/admin/users", { token: workerToken, cookie: adminCookie })).body.data).toEqual(expect.arrayContaining([expect.objectContaining({ userTag: clientTag })]));
+    expect((await call(`/v1/admin/users/${clientTag}`, { token: workerToken, cookie: adminCookie, method: "DELETE" })).status).toBe(204);
     expect((await call("/v1/admin/me", { token: outsiderToken })).body.data.isAdmin).toBe(false);
 
-    const queue = await call("/v1/admin/worker-applications", { token: workerToken });
+    const statusRefresh = await call("/v1/team/auth/status", { token: workerToken, cookie: adminCookie });
+    const refreshedCookie = statusRefresh.cookies.map(value => value.split(";")[0]).filter(value => value.startsWith("jobsai_team_session=") && value.length > "jobsai_team_session=".length).at(-1) || adminCookie;
+    expect((await call("/v1/team/disputes", { token: workerToken, cookie: refreshedCookie })).status).toBe(200);
+    const queue = await call("/v1/admin/worker-applications", { token: workerToken, cookie: refreshedCookie });
     expect(queue.status).toBe(200);
     expect(queue.body.data[0]).toMatchObject({ id: profile.id, email: application.email, phone: application.phone });
 
-    const changes = await call(`/v1/admin/worker-applications/${profile.id}/review`, { token: workerToken, method: "POST", body: { decision: "changes_requested", note: "Clarify your listed work hours." } });
+    const changes = await call(`/v1/admin/worker-applications/${profile.id}/review`, { token: workerToken, cookie: refreshedCookie, method: "POST", body: { decision: "changes_requested", note: "Clarify your listed work hours." } });
     expect(changes.status).toBe(200);
     expect((await call(`/v1/workers/${profile.slug}`)).status).toBe(404);
     const resubmitted = await call("/v1/workers/me", { token: workerToken, method: "PUT", body: application });
     expect(resubmitted.body.data.status).toBe("pending_review");
-    const approved = await call(`/v1/admin/worker-applications/${profile.id}/review`, { token: workerToken, method: "POST", body: { decision: "approved" } });
+    const approved = await call(`/v1/admin/worker-applications/${profile.id}/review`, { token: workerToken, cookie: refreshedCookie, method: "POST", body: { decision: "approved" } });
     expect(approved.status).toBe(200);
 
     const publicProfile = await call(`/v1/workers/${profile.slug}`);
@@ -105,7 +114,7 @@ dbTest("worker profiles require review, publish safely, expose completed work me
     const edited = await call("/v1/workers/me", { token: workerToken, method: "PUT", body: { ...application, country: "Kenya" } });
     expect(edited.body.data.status).toBe("pending_review");
     expect((await call(`/v1/workers/${profile.slug}`)).status).toBe(404);
-    expect((await call(`/v1/admin/worker-applications/${profile.id}/review`, { token: workerToken, method: "POST", body: { decision: "approved" } })).status).toBe(200);
+    expect((await call(`/v1/admin/worker-applications/${profile.id}/review`, { token: workerToken, cookie: refreshedCookie, method: "POST", body: { decision: "approved" } })).status).toBe(200);
   } finally {
     server.close();
     await db.query("DELETE FROM worker_profile_reviews WHERE profile_id IN (SELECT id FROM worker_profiles WHERE user_id=$1)", [workerId]);

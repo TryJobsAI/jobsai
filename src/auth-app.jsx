@@ -8,7 +8,7 @@ import './wallet-app.css';
 
 function nextPage() {
   const next = new URLSearchParams(location.search).get('next') || 'workspace.html';
-  return /^(?:workspace|team|admin)\.html(?:[?#].*)?$/.test(next) ? next : 'workspace.html';
+  return /^(?:workspace|admin)\.html(?:[?#].*)?$/.test(next) ? next : 'workspace.html';
 }
 
 function Auth() {

@@ -1,6 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
-import { requireAuth } from "./auth.js";
+import { requireAuth, requireTeamPassword } from "./auth.js";
 import { db } from "./db/index.js";
 import { ApiError, asyncRoute } from "./http.js";
 import { userTagSchema } from "./user-tags.js";
@@ -21,7 +21,7 @@ adminRouter.get("/me", asyncRoute(async (request, response) => {
   );
   response.json({ data: { isAdmin: result.rows[0]?.is_admin ?? false, userTag: result.rows[0]?.user_tag ?? null } });
 }));
-adminRouter.use(requireAdmin);
+adminRouter.use(requireAdmin, requireTeamPassword);
 
 adminRouter.get("/users", asyncRoute(async (_request, response) => {
   const result = await db.query<{ user_tag: string; wallet_address: string; created_at: Date }>(

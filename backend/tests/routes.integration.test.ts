@@ -259,7 +259,8 @@ dbRouteTest("PostgreSQL job routes enforce claim limits and create client refund
     expect(wrongPassword.status).toBe(401);
     const teamLogin = await request("/v1/team/auth/login", teamToken, { password: process.env.JOBSAI_TEAM_PASSWORD });
     expect(teamLogin.status).toBe(200);
-    const teamCookie = teamLogin.headers.get("set-cookie")?.split(";", 1)[0];
+    const teamCookie = (typeof teamLogin.headers.getSetCookie === "function" ? teamLogin.headers.getSetCookie() : (teamLogin.headers.get("set-cookie") || "").split(/,\s*(?=jobsai_team_session=)/))
+      .map((value) => value.split(";", 1)[0]).filter((value) => value.startsWith("jobsai_team_session=") && value.length > "jobsai_team_session=".length).at(-1);
     expect(teamCookie).toStartWith("jobsai_team_session=");
 
     const noPassword = await get(`/v1/team/disputes/${disputed}`, teamToken);

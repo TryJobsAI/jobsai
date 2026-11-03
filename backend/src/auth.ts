@@ -44,8 +44,8 @@ export function isValidTeamSessionToken(token: string | undefined, secret = conf
 
 function teamSessionCookie(request: Request) {
   const header = request.header("cookie") || "";
-  const entry = header.split(";").map((item) => item.trim()).find((item) => item.startsWith(`${TEAM_SESSION_COOKIE}=`));
-  return entry?.slice(TEAM_SESSION_COOKIE.length + 1);
+  const entries = header.split(";").map((item) => item.trim()).filter((item) => item.startsWith(`${TEAM_SESSION_COOKIE}=`));
+  return entries.at(-1)?.slice(TEAM_SESSION_COOKIE.length + 1);
 }
 
 export function requireTeamPassword(request: Request, _response: Response, next: NextFunction) {
@@ -63,12 +63,18 @@ export function requireTeamPassword(request: Request, _response: Response, next:
 export function setTeamSessionCookie(response: Response) {
   const token = createTeamSessionToken();
   const secure = config.NODE_ENV === "production" ? "; Secure" : "";
-  response.setHeader("Set-Cookie", `${TEAM_SESSION_COOKIE}=${token}; Path=/api/jobsai/v1/team; Max-Age=${TEAM_SESSION_SECONDS}; HttpOnly; SameSite=Strict${secure}`);
+  response.setHeader("Set-Cookie", [
+    `${TEAM_SESSION_COOKIE}=; Path=/api/jobsai/v1/team; Max-Age=0; HttpOnly; SameSite=Strict${secure}`,
+    `${TEAM_SESSION_COOKIE}=${token}; Path=/api/jobsai/v1; Max-Age=${TEAM_SESSION_SECONDS}; HttpOnly; SameSite=Strict${secure}`,
+  ]);
 }
 
 export function clearTeamSessionCookie(response: Response) {
   const secure = config.NODE_ENV === "production" ? "; Secure" : "";
-  response.setHeader("Set-Cookie", `${TEAM_SESSION_COOKIE}=; Path=/api/jobsai/v1/team; Max-Age=0; HttpOnly; SameSite=Strict${secure}`);
+  response.setHeader("Set-Cookie", [
+    `${TEAM_SESSION_COOKIE}=; Path=/api/jobsai/v1/team; Max-Age=0; HttpOnly; SameSite=Strict${secure}`,
+    `${TEAM_SESSION_COOKIE}=; Path=/api/jobsai/v1; Max-Age=0; HttpOnly; SameSite=Strict${secure}`,
+  ]);
 }
 
 export function assertTeamPassword(password: string) {
@@ -180,12 +186,14 @@ export async function requireAuth(request: Request, _response: Response, next: N
   }
 }
 
-export function requireTeam(request: Request, _response: Response, next: NextFunction) {
-  if (!request.auth || !isTeamWallet(request.auth.walletAddress)) {
-    next(new ApiError(403, "team_only", "Only an authorized JobsAI team wallet can perform this action."));
-    return;
-  }
-  next();
+export async function requireTeam(request: Request, _response: Response, next: NextFunction) {
+  try {
+    if (!request.auth) throw new ApiError(403, "team_only", "Only an authorized JobsAI reviewer can perform this action.");
+    if (isTeamWallet(request.auth.walletAddress)) { next(); return; }
+    const result = await db.query<{ is_admin: boolean }>("SELECT is_admin FROM users WHERE id=$1", [request.auth.userId]);
+    if (!result.rows[0]?.is_admin) throw new ApiError(403, "team_only", "Only an authorized JobsAI reviewer can perform this action.");
+    next();
+  } catch (error) { next(error); }
 }
 
 export async function revokeSession(request: Request) {

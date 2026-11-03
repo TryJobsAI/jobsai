@@ -856,6 +856,7 @@ teamJobsRouter.post("/auth/login", rateLimit([{ scope: "team-password", limit: 5
   response.json({ data: { authenticated: true, expiresIn: 8 * 60 * 60 } });
 }));
 teamJobsRouter.get("/auth/status", requireAuth, requireTeam, requireTeamPassword, (_request, response) => {
+  setTeamSessionCookie(response);
   response.json({ data: { authenticated: true } });
 });
 teamJobsRouter.post("/auth/logout", requireAuth, requireTeam, (_request, response) => {

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
-import { requireAuth } from "./auth.js";
+import { requireAuth, requireTeamPassword } from "./auth.js";
 import { config } from "./config.js";
 import { db } from "./db/index.js";
 import { ApiError, asyncRoute } from "./http.js";
@@ -140,7 +140,7 @@ workerProfilesRouter.get("/:slug", asyncRoute(async (request, response) => {
   response.json({ data: { ...publicFields(profile), ...(await workStats(profile.user_id)) } });
 }));
 
-workerApplicationsAdminRouter.use(requireAdmin);
+workerApplicationsAdminRouter.use(requireAdmin, requireTeamPassword);
 workerApplicationsAdminRouter.get("/", asyncRoute(async (_request, response) => {
   const result = await db.query<ProfileRow>(
     "SELECT wp.*,u.user_tag FROM worker_profiles wp JOIN users u ON u.id=wp.user_id WHERE wp.status IN ('pending_review','changes_requested') ORDER BY wp.submitted_at ASC LIMIT 200",

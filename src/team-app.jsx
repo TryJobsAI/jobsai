@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { WagmiProvider, useAccount, useDisconnect } from 'wagmi';
-import { JobsAIAPI, queryClient, readSession, sessionKey, walletConfig } from './wallet-config.jsx';
+import { WagmiProvider } from 'wagmi';
+import { JobsAIAPI, queryClient, readSession, walletConfig } from './wallet-config.jsx';
 import './wallet-app.css';
 
 function safeEvidenceUrl(value) {
@@ -22,8 +22,6 @@ function Feedback({ feedback, onClose }) {
 }
 
 function TeamReview() {
-  const { address, isConnected, isReconnecting } = useAccount();
-  const { disconnectAsync } = useDisconnect();
   const [session] = useState(readSession);
   const [password, setPassword] = useState('');
   const [verified, setVerified] = useState(false);
@@ -37,11 +35,8 @@ function TeamReview() {
   const [feedback, setFeedback] = useState(null);
 
   useEffect(() => {
-    if (isReconnecting) return;
-    if (!session?.token || !isConnected || !address || session.walletAddress.toLowerCase() !== address.toLowerCase()) {
-      location.replace(`auth.html?next=${encodeURIComponent('team.html')}`);
-    }
-  }, [address, isConnected, isReconnecting, session]);
+    if (!session?.token) location.replace('auth.html?next=admin.html');
+  }, [session]);
 
   async function loadDisputes(token = session?.token, keepSelection = false) {
     setFeedback({ title: 'Loading review queue', message: 'Retrieving disputes and payout failures for team review…', kind: 'loading' });
@@ -59,21 +54,27 @@ function TeamReview() {
   }
 
   useEffect(() => {
-    if (!session?.token || !isConnected || !address || session.walletAddress.toLowerCase() !== address.toLowerCase()) return;
+    if (!session?.token) return;
     let active = true;
-    setChecking(true);
-    JobsAIAPI.teamStatus(session.token).then(async () => {
-      if (!active) return;
-      setVerified(true);
-      await loadDisputes(session.token);
-    }).catch(error => {
-      if (!active) return;
-      setVerified(false);
-      if (error.code !== 'team_password_required')
-        setFeedback({ title: 'Team access unavailable', message: error.message || 'Could not verify team access. Check this wallet is authorized for team review.', kind: 'error' });
-    }).finally(() => { if (active) setChecking(false); });
-    return () => { active = false; };
-  }, [address, isConnected, session]);
+    async function verifyAccess() {
+      setChecking(true);
+      try {
+        await JobsAIAPI.teamStatus(session.token);
+        if (!active) return;
+        setVerified(true);
+        await loadDisputes(session.token);
+      } catch (error) {
+        if (!active) return;
+        setVerified(false);
+        if (error.code !== 'team_password_required')
+          setFeedback({ title: 'Team access unavailable', message: error.message || 'Could not verify admin access for dispute review.', kind: 'error' });
+      } finally { if (active) setChecking(false); }
+    }
+    const onAccessChanged = () => { void verifyAccess(); };
+    void verifyAccess();
+    window.addEventListener('jobsai-team-access-changed', onAccessChanged);
+    return () => { active = false; window.removeEventListener('jobsai-team-access-changed', onAccessChanged); };
+  }, [session?.token]);
 
   async function signIn(event) {
     event.preventDefault();
@@ -123,28 +124,21 @@ function TeamReview() {
     } finally { setBusy(false); }
   }
 
-  async function signOut() {
-    setBusy(true);
-    try { await JobsAIAPI.teamLogout(session.token); } catch {}
-    try { await JobsAIAPI.logout(session.token); } catch {}
-    sessionStorage.removeItem(sessionKey);
-    try { await disconnectAsync(); } catch {}
-    location.replace('auth.html?next=team.html');
-  }
+  function backToAdmin() { window.dispatchEvent(new Event('jobsai-admin-view')); }
 
-  if (isReconnecting || checking || !session?.token || !isConnected || !address || session.walletAddress.toLowerCase() !== address.toLowerCase()) {
+  if (checking || !session?.token) {
     return <main className="team-review-page"><section className="team-review-loading"><span className="workspace-modal-symbol"><i /></span><h1>Opening team review</h1></section></main>;
   }
 
   return <main className="team-review-page">
     <header className="team-review-header">
       <a className="jobsai-auth-brand" href="index.html"><img src="assets/jobsai-approved-mark.svg" alt="" width="34" height="40" />JobsAI</a>
-      <div className="team-review-header-actions"><span className="team-wallet-label">{address.slice(0, 6)}…{address.slice(-4)}</span><button className="pill outline" onClick={signOut} disabled={busy}>Sign out</button></div>
+      <div className="team-review-header-actions"><span className="team-wallet-label">{session.walletAddress.slice(0, 6)}…{session.walletAddress.slice(-4)}</span><button className="pill outline" onClick={backToAdmin}>Back to admin</button></div>
     </header>
 
     {!verified ? <section className="team-password-card" aria-labelledby="team-password-title">
       <span className="eyebrow">AUTHORIZED REVIEWERS</span><h1 id="team-password-title">Team dispute review</h1>
-      <p>Connect with an authorized team wallet and enter the team password to open the review queue.</p>
+      <p>Enter the team password to review disputed jobs and payout failures.</p>
       <form onSubmit={signIn}><label htmlFor="team-password">Team password</label><input id="team-password" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required /><button className="pill primary" disabled={busy || !password}>{busy ? 'Checking…' : 'Open review queue'}</button></form>
     </section> : <>
       <section className="team-review-title"><div><span className="eyebrow">PRIVATE TEAM WORKSPACE</span><h1>Team review</h1><p>Review disputes and payout failures, then choose the settlement outcome.</p></div><button className="pill outline" onClick={() => loadDisputes(session.token, true)} disabled={busy}>Refresh queue</button></section>

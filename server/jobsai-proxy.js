@@ -59,7 +59,7 @@ export async function proxyJobsAI(request) {
   const cookie = request.headers.get("cookie");
   const contentType = request.headers.get("content-type");
   if (authorization) headers.set("authorization", authorization);
-  if (cookie && apiPath.startsWith("/v1/team/")) headers.set("cookie", cookie);
+  if (cookie && (apiPath.startsWith("/v1/team/") || apiPath.startsWith("/v1/admin/"))) headers.set("cookie", cookie);
   if (contentType && method !== "GET") headers.set("content-type", contentType);
 
   try {
@@ -70,8 +70,11 @@ export async function proxyJobsAI(request) {
     });
     const retryAfter = upstream.headers.get("retry-after");
     if (retryAfter) responseHeaders.set("Retry-After", retryAfter);
-    const setCookie = upstream.headers.get("set-cookie");
-    if (setCookie && apiPath.startsWith("/v1/team/")) responseHeaders.set("Set-Cookie", setCookie);
+    const setCookies = typeof upstream.headers.getSetCookie === "function"
+      ? upstream.headers.getSetCookie()
+      : (upstream.headers.get("set-cookie") || "").split(/,\s*(?=jobsai_team_session=)/).filter(Boolean);
+    if (apiPath.startsWith("/v1/team/") || apiPath.startsWith("/v1/admin/"))
+      for (const cookieValue of setCookies) responseHeaders.append("Set-Cookie", cookieValue);
     return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
   } catch {
     return json(502, "jobsai_api_unavailable", "JobsAI could not reach the API. Please try again.");

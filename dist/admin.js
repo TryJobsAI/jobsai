@@ -1,5 +1,9 @@
 (() => {
   const root = document.querySelector('#worker-admin-root');
+  const gateRoot = document.querySelector('#admin-gate-root');
+  const adminWorkspace = document.querySelector('#admin-workspace');
+  const managementPanel = document.querySelector('#admin-management-panel');
+  const disputesPanel = document.querySelector('#admin-disputes-panel');
   const dialog = document.querySelector('#worker-admin-dialog');
   const title = document.querySelector('#worker-admin-dialog-title');
   const message = document.querySelector('#worker-admin-dialog-message');
@@ -22,19 +26,42 @@
     noteWrap.hidden = true; confirm.hidden = true;
     if (!dialog.open) dialog.showModal();
   }
+  function showGate() { gateRoot.hidden = false; adminWorkspace.hidden = true; signout.hidden = true; }
   function renderSignIn() {
-    root.replaceChildren();
+    showGate(); gateRoot.replaceChildren();
     const card = el('section', undefined, 'worker-admin-card');
-    card.append(el('span', 'ADMIN', 'eyebrow'), el('h1', 'Sign in to JobsAI'), el('p', 'Sign in with an admin wallet to manage worker reviews and admin access.'));
+    card.append(el('span', 'ADMIN', 'eyebrow'), el('h1', 'Sign in to JobsAI'), el('p', 'Sign in with an admin wallet to continue.'));
     const link = el('a', 'Sign in with your wallet', 'pill primary'); link.href = '/auth.html?next=admin.html';
-    card.append(link); root.append(card);
+    card.append(link); gateRoot.append(card);
   }
   function renderDenied() {
-    root.replaceChildren();
+    showGate(); gateRoot.replaceChildren();
     const card = el('section', undefined, 'worker-admin-card');
     card.append(el('span', 'ADMIN', 'eyebrow'), el('h1', 'Admin access required'), el('p', 'This JobsAI account does not have admin access.'));
     const link = el('a', 'Return to JobsAI', 'pill primary'); link.href = '/workspace.html';
-    card.append(link); root.append(card);
+    card.append(link); gateRoot.append(card);
+  }
+  function renderPasswordGate() {
+    showGate(); gateRoot.replaceChildren();
+    const card = el('section', undefined, 'worker-admin-card admin-password-gate');
+    card.append(el('span', 'PRIVATE JOBSAI ADMIN', 'eyebrow'), el('h1', 'Admin access'), el('p', 'Enter the JobsAI team password to open admin tools and dispute review.'));
+    const form = el('form', undefined, 'worker-admin-login');
+    const label = el('label', 'Team password');
+    const input = el('input'); input.type = 'password'; input.required = true; input.autocomplete = 'current-password';
+    label.append(input);
+    const submit = el('button', 'Open admin', 'pill primary'); submit.type = 'submit';
+    form.append(label, submit);
+    form.addEventListener('submit', async event => {
+      event.preventDefault(); submit.disabled = true;
+      try {
+        await JobsAIAPI.teamLogin(input.value, session.token);
+        input.value = '';
+        await loadAll();
+        window.dispatchEvent(new Event('jobsai-team-access-changed'));
+      } catch (error) { feedback('Admin access failed', error.message || 'The team password could not be verified.', 'error'); }
+      finally { submit.disabled = false; }
+    });
+    card.append(form); gateRoot.append(card);
   }
   function renderAdminList(users) {
     const section = el('section', undefined, 'worker-admin-card');
@@ -53,7 +80,6 @@
       catch (error) { feedback('Could not add admin', error.message || 'JobsAI could not update admin access.', 'error'); }
       finally { add.disabled = false; }
     });
-    section.append(form);
     const list = el('div', undefined, 'worker-admin-list');
     if (!users.length) section.append(el('p', 'No admin accounts were returned.'));
     users.forEach(user => {
@@ -72,7 +98,7 @@
       } else card.append(el('span', 'Initial admin', 'worker-verified-badge'));
       list.append(card);
     });
-    section.append(list); return section;
+    section.append(form, list); return section;
   }
   function renderQueue(profiles) {
     const section = el('section', undefined, 'worker-admin-card');
@@ -108,26 +134,30 @@
     section.append(list); return section;
   }
   async function loadAll() {
-    root.replaceChildren();
-    const status = await JobsAIAPI.adminStatus(session.token);
-    if (!status?.data?.isAdmin) { renderDenied(); return; }
-    signout.hidden = false;
-    root.append(el('div', 'Loading admin workspace…', 'worker-admin-card'));
+    showGate(); gateRoot.replaceChildren(el('section', 'Checking admin access…', 'worker-admin-card'));
+    if (!session) { renderSignIn(); return; }
     try {
-      const [usersResult, applicationsResult] = await Promise.all([
-        JobsAIAPI.adminUsers(session.token), JobsAIAPI.workerApplications(session.token),
-      ]);
-      root.replaceChildren();
-      const heading = el('div', undefined, 'worker-admin-title');
-      heading.append(el('div', undefined));
-      heading.firstChild.append(el('span', 'JOBSAI ADMIN', 'eyebrow'), el('h1', 'Admin'), el('p', 'Manage worker applications and admin access.'));
-      root.append(heading, renderAdminList(usersResult.data || []), renderQueue(applicationsResult.data || []));
+      const status = await JobsAIAPI.adminStatus(session.token);
+      if (!status?.data?.isAdmin) { renderDenied(); return; }
+      await JobsAIAPI.teamStatus(session.token);
     } catch (error) {
-      root.replaceChildren();
+      if (error.code === 'team_password_required') { renderPasswordGate(); return; }
+      if (error.code === 'admin_required' || error.status === 403) { renderDenied(); return; }
+      if (error.code === 'unauthenticated' || error.code === 'invalid_session' || error.status === 401) { renderSignIn(); return; }
+      gateRoot.replaceChildren();
       const card = el('section', undefined, 'worker-admin-card');
-      card.append(el('h1', 'Could not load admin tools'), el('p', error.message || 'JobsAI could not load this page.'));
-      const retry = el('button', 'Try again', 'pill primary'); retry.addEventListener('click', loadAll); card.append(retry); root.append(card);
+      card.append(el('h1', 'Could not verify admin access'), el('p', error.message || 'JobsAI could not verify this account.'));
+      const retry = el('button', 'Try again', 'pill primary'); retry.addEventListener('click', loadAll); card.append(retry); gateRoot.append(card); return;
     }
+    gateRoot.hidden = true; adminWorkspace.hidden = false; signout.hidden = false;
+    const [usersResult, applicationsResult] = await Promise.all([
+      JobsAIAPI.adminUsers(session.token), JobsAIAPI.workerApplications(session.token),
+    ]);
+    root.replaceChildren();
+    const heading = el('div', undefined, 'worker-admin-title');
+    heading.append(el('div', undefined));
+    heading.firstChild.append(el('span', 'JOBSAI ADMIN', 'eyebrow'), el('h1', 'Admin'), el('p', 'Manage worker reviews and admin access.'));
+    root.append(heading, renderAdminList(usersResult.data || []), renderQueue(applicationsResult.data || []));
   }
   function review(profile, value) {
     selected = profile; decision = value; note.value = '';
@@ -138,6 +168,14 @@
     confirm.textContent = value === 'approved' ? 'Approve profile' : value === 'rejected' ? 'Reject application' : 'Request changes';
     dialog.showModal();
   }
+  document.querySelectorAll('[data-admin-panel]').forEach(button => button.addEventListener('click', () => {
+    const selected = button.dataset.adminPanel;
+    managementPanel.hidden = selected !== 'management';
+    disputesPanel.hidden = selected !== 'disputes';
+    document.querySelectorAll('[data-admin-panel]').forEach(tab => tab.setAttribute('aria-selected', String(tab === button)));
+    if (selected === 'disputes') window.dispatchEvent(new Event('jobsai-team-access-changed'));
+  }));
+  window.addEventListener('jobsai-admin-view', () => document.querySelector('[data-admin-panel="management"]').click());
   confirm.addEventListener('click', async event => {
     event.preventDefault();
     if (!selected || !decision) return;
@@ -149,10 +187,11 @@
   });
   document.querySelector('#worker-admin-cancel').addEventListener('click', () => { selected = null; decision = null; });
   signout.addEventListener('click', async () => {
+    await JobsAIAPI.teamLogout(session.token).catch(() => {});
     await JobsAIAPI.logout(session.token).catch(() => {});
     sessionStorage.removeItem(sessionKey);
     location.replace('/auth.html?next=admin.html');
   });
   if (!session) renderSignIn();
-  else loadAll().catch(error => { root.replaceChildren(); feedback('Could not open admin', error.message || 'Try again.', 'error'); });
+  else loadAll().catch(error => feedback('Could not open admin', error.message || 'Try again.', 'error'));
 })();
