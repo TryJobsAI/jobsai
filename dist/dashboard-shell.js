@@ -1,5 +1,5 @@
 (() => {
-  const tabs = ['matches', 'tracker', 'interviews', 'create', 'jobs', 'agents', 'worker-profile', 'services', 'settings'];
+  const tabs = ['matches', 'tracker', 'interviews', 'create', 'jobs', 'my-work', 'agents', 'worker-profile', 'services', 'settings'];
   const panels = [...document.querySelectorAll('[data-panel]')];
   const buttons = [...document.querySelectorAll('[data-tab]')];
   const infoDialog = document.querySelector('#workspace-info');
@@ -7,7 +7,7 @@
   const infoContent = document.querySelector('#workspace-info-content');
   const information = {
     workspace: { title: 'Your JobsAI workspace', paragraphs: ['Wallet sign-in connects your account to funded jobs and keeps your session in this browser. Career discovery, application tracking, and practice tools are separate workspace areas.'] },
-    career: { title: 'Career discovery', paragraphs: ['Personalized career matching is not available yet. You can browse and claim live funded work from the Funded work tab.'] },
+    career: { title: 'Career discovery', paragraphs: ['Personalized career matching is not available yet. You can browse and claim live funded work from the Jobs tab.'] },
     applications: { title: 'Application board', paragraphs: ['Application tracking is not available yet. Your board will appear here when career application services are connected.'] },
     practice: { title: 'Practice guide and privacy', paragraphs: ['Use a real example. Set the situation, explain your contribution and decisions, then describe what changed or what you learned.', 'The structure checklist runs in this browser. It does not assess answer quality with AI or send your answer to JobsAI.'] },
     funding: { title: 'Payment and funding', paragraphs: ['Choose ETH or USDG and enter the exact amount you want held for the job. Creating the job does not move funds. You approve the separate escrow transfer in your wallet.'] },

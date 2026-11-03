@@ -11,10 +11,10 @@
   <link rel="stylesheet" href="brand.css?v=e2c8a539d9">
   <link rel="stylesheet" href="dashboard.css?v=98f2191fc3">
   <link rel="stylesheet" href="live-jobs.css?v=75d20ccea9">
-  <link rel="stylesheet" href="wallet/wallet.css?v=09c07f7100">
+  <link rel="stylesheet" href="wallet/wallet.css?v=5894688519">
   <script src="jobsai-api.js?v=7b5d18e968" defer></script>
-  <script src="dashboard-shell.js?v=60f5dafecf" defer></script>
-  <script type="module" src="wallet/workspace.js?v=ed4572c012"></script>
+  <script src="dashboard-shell.js?v=094640c07d" defer></script>
+  <script type="module" src="wallet/workspace.js?v=f2c4689130"></script>
 </head>
 <body class="workspace-body">
   <a class="skip" href="#workspace-main">Skip to workspace</a>
@@ -35,7 +35,8 @@
         <button data-tab="tracker"><span>▤</span> My applications</button>
         <button data-tab="interviews"><span>◌</span> Practice studio</button>
         <button data-tab="create"><span>＋</span> Create a job</button>
-        <button data-tab="jobs"><span>✓</span> Funded work</button>
+        <button data-tab="jobs"><span>✓</span> Jobs</button>
+        <button data-tab="my-work"><span>▤</span> My work</button>
         <button data-tab="agents"><span>✦</span> AI workers</button>
         <button data-tab="worker-profile"><span>◎</span> Worker profile</button>
         <button data-tab="settings"><span>⚙</span> Settings</button>
@@ -66,8 +67,10 @@
         <div id="create-job-root"></div>
       </section>
       <section data-panel="jobs" hidden>
-        <div class="workspace-title"><div><h1>A little less busywork.<br>A lot more done.</h1></div></div>
+        <div class="workspace-title"><div><span class="eyebrow">BROWSE FUNDED TASKS</span><h1>Jobs.</h1></div></div>
         <section class="live-jobs-panel" aria-labelledby="live-jobs-title"><div id="live-jobs-root"></div></section>
+      </section>
+      <section data-panel="my-work" hidden>
         <div id="work-management-root"></div>
       </section>
       <section data-panel="agents" hidden>
