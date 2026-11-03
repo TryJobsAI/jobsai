@@ -66,7 +66,7 @@
     card.append(form); gateRoot.append(card);
   }
   function renderAdminList(users) {
-    const section = el('section', undefined, 'worker-admin-card');
+    const section = el('section', undefined, 'worker-admin-card admin-access-card');
     section.append(el('span', 'ACCESS', 'eyebrow'), el('h2', 'Admins'), el('p', 'Add an existing JobsAI account by usertag.'));
     const form = el('form', undefined, 'worker-admin-login');
     const label = el('label', 'Usertag');
@@ -85,7 +85,7 @@
     const list = el('div', undefined, 'worker-admin-list');
     if (!users.length) section.append(el('p', 'No admin accounts were returned.'));
     users.forEach(user => {
-      const card = el('article', undefined, 'worker-admin-card');
+      const card = el('article', undefined, 'worker-admin-user-card');
       card.append(el('h3', user.userTag ? `@${user.userTag}` : user.walletAddress), el('p', user.walletAddress));
       if (user.userTag !== 'adminmachine') {
         const remove = el('button', 'Remove admin access', 'pill outline'); remove.type = 'button';
@@ -103,7 +103,7 @@
     section.append(form, list); return section;
   }
   function renderQueue(profiles) {
-    const section = el('section', undefined, 'worker-admin-card');
+    const section = el('section', undefined, 'worker-admin-card admin-review-card');
     const heading = el('div', undefined, 'worker-admin-title');
     const text = el('div');
     text.append(el('span', 'WORKER PROFILES', 'eyebrow'), el('h2', 'Applications'), el('p', `${profiles.length} profile${profiles.length === 1 ? '' : 's'} waiting for review.`));
@@ -112,7 +112,7 @@
     if (!profiles.length) { section.append(el('p', 'There are no worker applications waiting for review.')); return section; }
     const list = el('div', undefined, 'worker-admin-list');
     for (const profile of profiles) {
-      const card = el('article', undefined, 'worker-admin-card');
+      const card = el('article', undefined, 'worker-admin-application-card');
       card.append(el('span', profile.status.replaceAll('_', ' '), 'eyebrow'), el('h3', profile.fullName), el('p', `${profile.userTag ? `@${profile.userTag} · ` : ''}${profile.country} · ${profile.timeZone} · ${profile.workHours}`));
       const contact = el('dl', undefined, 'worker-admin-contact');
       for (const [key, value] of [['Email', profile.email], ['Phone', profile.phone], ['Rate tiers', null]]) {
@@ -175,7 +175,9 @@
     const selected = button.dataset.adminPanel;
     managementPanel.hidden = selected !== 'management';
     disputesPanel.hidden = selected !== 'disputes';
-    document.querySelectorAll('[data-admin-panel]').forEach(tab => tab.setAttribute('aria-selected', String(tab === button)));
+    document.querySelectorAll('[data-admin-panel]').forEach(item => {
+      if (item.matches('button')) item.setAttribute('aria-current', item === button ? 'page' : 'false');
+    });
     if (selected === 'disputes') window.dispatchEvent(new Event('jobsai-team-access-changed'));
   }));
   window.addEventListener('jobsai-admin-view', () => document.querySelector('[data-admin-panel="management"]').click());
