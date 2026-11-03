@@ -4,7 +4,7 @@ import { expect, test } from "bun:test";
 const enabled = process.env.JOBSAI_DB_INTEGRATION === "1";
 const dbTest = enabled ? test : test.skip;
 
-dbTest("wallet owners can register scoped AI workers for writing and image generation", async () => {
+dbTest("wallet owners can register scoped AI workers for writing, translation, and image generation", async () => {
   const databaseUrl = new URL(process.env.DATABASE_URL!);
   if (!databaseUrl.pathname.toLowerCase().includes("test")) throw new Error("Agent integration test needs a disposable database with 'test' in its name.");
   const [{ app }, { db }, { migrate }, { hashSessionToken }, { hashAgentRuntimeToken }] = await Promise.all([
@@ -45,6 +45,10 @@ dbTest("wallet owners can register scoped AI workers for writing and image gener
     expect(createdJohn.status).toBe(201);
     const john = createdJohn.body.data;
     agentIds.push(john.id);
+    const createdJayla = await call("/v1/agents", ownerSession, "POST", { name: "Jayla", description: "Translates documents and returns reviewable files.", categories: ["translation"], capabilities: ["PDF", "DOCX", "Markdown"], expiresInDays: 30 });
+    expect(createdJayla.status).toBe(201);
+    const jayla = createdJayla.body.data;
+    agentIds.push(jayla.id);
 
     async function createFundedJob(title: string, category: string, clientToken = clientSession) {
       const created = await call("/v1/jobs", clientToken, "POST", { title, description: "Complete the writing task and cite public sources.", acceptanceCriteria: ["Include cited sources."], category, asset: "eth", amount: "0.01" });
@@ -61,6 +65,7 @@ dbTest("wallet owners can register scoped AI workers for writing and image gener
     const overflowJob = await createFundedJob("Another article", "writing");
     const humanJob = await createFundedJob("Human-written article", "writing");
     const imageJob = await createFundedJob("Create a product image", "image_generation");
+    const translationJob = await createFundedJob("Translate a short document into French", "translation");
     const baseHeaders = `Bearer ${firstToken}`;
     const profile = await call("/v1/agent-runtime/profile", firstToken);
     expect(profile.body.data).toMatchObject({ id: agentId, name: "Julie", categories: ["writing", "research"], capabilities: ["Article writing", "Public research"], ownerWallet });
@@ -69,6 +74,7 @@ dbTest("wallet owners can register scoped AI workers for writing and image gener
     expect(listed.body.data.map((item: { id: string }) => item.id)).not.toContain(codingJob);
     expect(listed.body.data.map((item: { id: string }) => item.id)).not.toContain(ownJob);
     expect((await call("/v1/agent-runtime/jobs", john.runtimeToken)).body.data.map((item: { id: string }) => item.id)).toContain(imageJob);
+    expect((await call("/v1/agent-runtime/jobs", jayla.runtimeToken)).body.data.map((item: { id: string }) => item.id)).toContain(translationJob);
     expect((await call(`/v1/agent-runtime/jobs/${writingJob}/claim`, john.runtimeToken, "POST", {})).status).toBe(403);
 
     expect((await call(`/v1/jobs/${humanJob}/claim`, ownerSession, "POST", {})).status).toBe(200);
@@ -118,6 +124,11 @@ dbTest("wallet owners can register scoped AI workers for writing and image gener
     const imageSubmission = await call(`/v1/agent-runtime/jobs/${imageJob}/submissions`, john.runtimeToken, "POST", { summary: "Generated original image", deliverable: "https://res.cloudinary.com/jobsai/image/upload/sample.webp", evidence: ["https://res.cloudinary.com/jobsai/image/upload/sample.webp"] });
     expect(imageSubmission.status).toBe(201);
     expect(imageSubmission.body.data.submittedByAgent).toMatchObject({ id: john.id, name: "John" });
+    expect((await call(`/v1/agent-runtime/jobs/${translationJob}/claim`, jayla.runtimeToken, "POST", {})).status).toBe(200);
+    expect((await call(`/v1/agent-runtime/jobs/${translationJob}/submissions`, jayla.runtimeToken, "POST", { summary: "French translation", deliverable: "missing file", evidence: [] })).body.error.code).toBe("translated_document_required");
+    const translationSubmission = await call(`/v1/agent-runtime/jobs/${translationJob}/submissions`, jayla.runtimeToken, "POST", { summary: "Translated into French", deliverable: "PDF translation", evidence: ["https://res.cloudinary.com/jobsai/raw/upload/translation.pdf"] });
+    expect(translationSubmission.status).toBe(201);
+    expect(translationSubmission.body.data.submittedByAgent).toMatchObject({ id: jayla.id, name: "Jayla" });
   } finally {
     server.close();
     if (jobIds.length) {

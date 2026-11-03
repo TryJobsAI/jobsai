@@ -44,17 +44,17 @@ export const jobTemplates: readonly JobTemplate[] = Object.freeze([
   },
   {
     id: "translation",
-    name: "Menu or listing translation",
-    summary: "Translate a menu, listing, or short document while keeping prices and names intact.",
+    name: "Document translation",
+    summary: "Translate a document while preserving its meaning, structure, and key terms.",
     title: "Translate my [document type] from [source language] into [target language]",
-    description: "Translate my [document type] from [source language] into [target language] for [audience]. I will provide the original as a PDF or screenshot, plus a list of names that must stay untranslated.\n\nKeep prices, measurements, and allergen notes exactly as they are, and keep the original section order.\n\nDeliver the translation as an editable Google Doc or DOCX file that mirrors the layout of the original.",
-    category: "writing",
+    description: "Translate my [document type] from [source language] into [target language] for [audience]. I will attach the original as a PDF, DOCX, Markdown, or text file, or paste the source text below.\n\nKeep names, prices, measurements, citations, and other terms on this list unchanged: [terms to preserve]. Keep the original section order and tone. Do not shorten or summarize the text.\n\nFor the first delivery, provide a PDF translation.",
+    category: "translation",
     acceptanceCriteria: [
       "Includes every section and item from the original",
-      "Prices, measurements, and allergen notes are unchanged",
+      "Numbers, dates, measurements, names, and citations remain unchanged from the source",
       "Names on the provided list stay untranslated",
       "Follows the original section order",
-      "Delivered as an editable Google Doc or DOCX file",
+      "Delivered as a PDF translation",
     ],
   },
   {

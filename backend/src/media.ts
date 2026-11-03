@@ -5,6 +5,14 @@ import { ApiError } from "./http.js";
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 export const IMAGE_CONTENT_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"] as const;
 type ImageContentType = (typeof IMAGE_CONTENT_TYPES)[number];
+export const MAX_DOCUMENT_BYTES = 12 * 1024 * 1024;
+export const DOCUMENT_CONTENT_TYPES = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/markdown",
+  "text/plain",
+] as const;
+type DocumentContentType = (typeof DOCUMENT_CONTENT_TYPES)[number];
 
 function cloudinaryCredentials() {
   let cloudName = config.CLOUDINARY_CLOUD_NAME;
@@ -21,7 +29,7 @@ function cloudinaryCredentials() {
     apiSecret ||= decodeURIComponent(parsed.password);
   }
   if (!cloudName || !apiKey || !apiSecret)
-    throw new ApiError(503, "media_storage_unavailable", "Image uploads are not configured yet.");
+    throw new ApiError(503, "media_storage_unavailable", "Cloud file storage is not configured yet.");
   return { cloudName, apiKey, apiSecret };
 }
 
@@ -83,4 +91,79 @@ export async function uploadSubmissionImage(bytes: Buffer, contentType: string, 
   if (typeof result.secure_url !== "string" || !result.secure_url.startsWith(expectedPrefix))
     throw new ApiError(502, "media_upload_failed", "Cloud image storage returned an invalid image URL.");
   return { url: result.secure_url, format: typeof result.format === "string" ? result.format : "image", bytes: typeof result.bytes === "number" ? result.bytes : bytes.length };
+}
+
+const documentExtensions: Record<DocumentContentType, string> = {
+  "application/pdf": "pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "text/markdown": "md",
+  "text/plain": "txt",
+};
+
+export function validateJobDocument(bytes: Buffer, contentType: string) {
+  if (!(DOCUMENT_CONTENT_TYPES as readonly string[]).includes(contentType))
+    throw new ApiError(415, "unsupported_document_type", "Use a PDF, DOCX, Markdown, or plain text document.");
+  if (!bytes.length || bytes.length > MAX_DOCUMENT_BYTES)
+    throw new ApiError(413, "document_size_invalid", "The document must be between 1 byte and 12 MB.");
+  if (contentType === "application/pdf" && bytes.subarray(0, 5).toString("ascii") !== "%PDF-")
+    throw new ApiError(415, "invalid_document_file", "The uploaded file does not match its document type.");
+  if (contentType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" &&
+      !(bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && [0x03, 0x05, 0x07].includes(bytes[2]) && [0x04, 0x06, 0x08].includes(bytes[3])))
+    throw new ApiError(415, "invalid_document_file", "The uploaded file does not match its document type.");
+  if (contentType === "text/markdown" || contentType === "text/plain") {
+    try {
+      const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      if (text.includes("\0")) throw new Error("binary text");
+    } catch { throw new ApiError(415, "invalid_document_file", "Upload a UTF-8 text document."); }
+  }
+  return contentType as DocumentContentType;
+}
+
+function safeDocumentName(fileName: string | undefined, extension: string) {
+  const base = (fileName || "translation").split(/[\\/]/).pop()!.replace(/\.[^.]*$/, "")
+    .normalize("NFKD").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "translation";
+  return `${base}.${extension}`;
+}
+
+async function uploadRawDocument(bytes: Buffer, contentType: string, folder: string, fileName?: string) {
+  const validType = validateJobDocument(bytes, contentType);
+  const { cloudName, apiKey, apiSecret } = cloudinaryCredentials();
+  const timestamp = Math.floor(Date.now() / 1000);
+  const extension = documentExtensions[validType];
+  const publicId = `${randomUUID()}.${extension}`;
+  const displayName = safeDocumentName(fileName, extension);
+  const signatureBase = `filename_override=${displayName}&folder=${folder}&public_id=${publicId}&timestamp=${timestamp}${apiSecret}`;
+  const signature = createHash("sha1").update(signatureBase).digest("hex");
+  const form = new FormData();
+  const fileBytes = new Uint8Array(bytes.length);
+  fileBytes.set(bytes);
+  form.append("file", new File([fileBytes.buffer], displayName, { type: validType }));
+  form.append("api_key", apiKey);
+  form.append("timestamp", String(timestamp));
+  form.append("folder", folder);
+  form.append("public_id", publicId);
+  form.append("filename_override", displayName);
+  form.append("signature", signature);
+
+  let response: Response;
+  try {
+    response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudName)}/raw/upload`, { method: "POST", body: form, signal: AbortSignal.timeout(60_000) });
+  } catch { throw new ApiError(502, "document_storage_unavailable", "The document could not be uploaded. Please try again."); }
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new ApiError(502, "document_upload_failed", "Cloud storage could not accept this document.");
+  }
+  const result = await response.json().catch(() => ({})) as { secure_url?: unknown; bytes?: unknown };
+  const expectedPrefix = `https://res.cloudinary.com/${cloudName}/raw/upload/`;
+  if (typeof result.secure_url !== "string" || !result.secure_url.startsWith(expectedPrefix))
+    throw new ApiError(502, "document_upload_failed", "Cloud storage returned an invalid document link.");
+  return { url: result.secure_url, name: displayName, bytes: typeof result.bytes === "number" ? result.bytes : bytes.length };
+}
+
+export function uploadJobSourceDocument(bytes: Buffer, contentType: string, jobId: string, fileName?: string) {
+  return uploadRawDocument(bytes, contentType, `jobsai/job-sources/${jobId}`, fileName);
+}
+
+export function uploadSubmissionDocument(bytes: Buffer, contentType: string, jobId: string, fileName?: string) {
+  return uploadRawDocument(bytes, contentType, `jobsai/submissions/${jobId}`, fileName);
 }

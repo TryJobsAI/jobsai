@@ -7,7 +7,7 @@ import { db } from "./db/index.js";
 import { jobsRouter, teamJobsRouter } from "./jobs.js";
 import { ApiError, asyncRoute, errorHandler } from "./http.js";
 import { reconcileSettlements } from "./settlement.js";
-import { IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES, uploadSubmissionImage } from "./media.js";
+import { DOCUMENT_CONTENT_TYPES, IMAGE_CONTENT_TYPES, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, uploadJobSourceDocument, uploadSubmissionImage } from "./media.js";
 import { assertCanSubmit } from "./lifecycle.js";
 import { rateLimit, requestIdentity } from "./rate-limit.js";
 import { agentRuntimeRouter, agentsRouter, requireAgentRuntime } from "./agents.js";
@@ -60,6 +60,34 @@ cronRouter.post("/settle", asyncRoute(async (request, response) => {
 }));
 
 app.use("/v1/auth", authRouter);
+app.post(
+  "/v1/jobs/:id/source-file",
+  requireAuth,
+  rateLimit([
+    { scope: "job-source-upload-user", limit: 10, windowSeconds: 3_600, identity: requestIdentity.authenticatedUser },
+    { scope: "job-source-upload-ip", limit: 30, windowSeconds: 3_600, identity: requestIdentity.clientIp },
+  ]),
+  express.raw({ type: [...DOCUMENT_CONTENT_TYPES], limit: MAX_DOCUMENT_BYTES }),
+  asyncRoute(async (request, response) => {
+    const id = z.string().uuid().parse(request.params.id);
+    if (!Buffer.isBuffer(request.body)) throw new ApiError(415, "unsupported_document_type", "Use a PDF, DOCX, Markdown, or plain text document.");
+    const selected = await db.query<{ status: string; source_file_required: boolean }>(
+      "SELECT status,source_file_required FROM jobs WHERE id=$1 AND client_id=$2 AND category='translation'",
+      [id, request.auth!.userId],
+    );
+    const job = selected.rows[0];
+    if (!job) throw new ApiError(404, "job_not_found", "This translation job does not exist.");
+    if (!job.source_file_required) throw new ApiError(409, "source_file_not_requested", "This job was created without a required source document.");
+    if (job.status !== "awaiting_funding") throw new ApiError(409, "source_file_locked", "The source document can only be added before the job is funded.");
+    const uploaded = await uploadJobSourceDocument(request.body, request.header("content-type")?.split(";")[0].trim().toLowerCase() || "", id, request.header("x-jobsai-file-name"));
+    const saved = await db.query(
+      "UPDATE jobs SET source_file_url=$2,updated_at=now() WHERE id=$1 AND client_id=$3 AND status='awaiting_funding' AND source_file_required RETURNING id",
+      [id, uploaded.url, request.auth!.userId],
+    );
+    if (!saved.rowCount) throw new ApiError(409, "source_file_locked", "The job changed while its source document was uploading. Please refresh and try again.");
+    response.status(201).json({ data: uploaded });
+  }),
+);
 app.post(
   "/v1/media/images",
   requireAuth,

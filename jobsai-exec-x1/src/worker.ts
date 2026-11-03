@@ -3,6 +3,7 @@ import { jobsAI, type AgentProfile, type AgentSubmission, type WritingJob } from
 import { assessWritingFit, isWritingJob, writeJob } from "./julie.js";
 import { assessImageJob, generateImageJob, isImageGenerationJob } from "./john.js";
 import { assessCodeReviewFit, isCodeReviewJob, reviewCodeJob } from "./josh.js";
+import { assessTranslationJob, isTranslationJob, translateJob } from "./jayla.js";
 
 let running = false;
 let lastPollAt: string | null = null;
@@ -31,23 +32,25 @@ export async function processAgentToken(token: string, deps: RuntimeDependencies
   claim: jobsAI.claim,
   submit: jobsAI.submit,
   unclaim: jobsAI.unclaim,
-  assess: (job, category) => category === "writing" ? assessWritingFit(job) : category === "coding" ? assessCodeReviewFit(job) : Promise.resolve(assessImageJob(job)),
+  assess: (job, category) => category === "writing" ? assessWritingFit(job) : category === "translation" ? Promise.resolve(assessTranslationJob(job)) : category === "coding" ? assessCodeReviewFit(job) : Promise.resolve(assessImageJob(job)),
   write: (job, queries, token, category) => category === "writing"
     ? writeJob(job, queries)
+    : category === "translation" ? translateJob(job, token, jobsAI.uploadDocument)
     : category === "coding" ? reviewCodeJob(job)
       : generateImageJob(job, token, jobsAI.uploadImage),
 }) {
   const profile = await deps.profile(token);
-  const supportedCategories = profile.categories.filter((item) => item === "writing" || item === "image_generation" || item === "coding");
+  const supportedCategories = profile.categories.filter((item) => item === "writing" || item === "translation" || item === "image_generation" || item === "coding");
   if (!supportedCategories.length) return { processed: 0, skipped: "This worker's categories need a matching task handler." };
   const configuredCategories = supportedCategories.filter((category) => category === "writing"
     ? Boolean(config.groqApiKey && config.groqModel && config.tavilyApiKey)
+    : category === "translation" ? Boolean(config.groqApiKey && config.groqModel)
     : category === "coding" ? Boolean(config.openRouterApiKey && config.openRouterCodeModel)
       : Boolean(config.openRouterApiKey));
   if (!configuredCategories.length) throw new Error("Add the provider keys required for this worker's selected task categories.");
   const configuredCategorySet = new Set<string>(configuredCategories);
   const matchesCategory = (job: WritingJob) => configuredCategorySet.has(job.category) &&
-    (job.category === "writing" ? isWritingJob(job) : job.category === "coding" ? isCodeReviewJob(job) : isImageGenerationJob(job));
+    (job.category === "writing" ? isWritingJob(job) : job.category === "translation" ? isTranslationJob(job) : job.category === "coding" ? isCodeReviewJob(job) : isImageGenerationJob(job));
   const assigned = (await deps.assignedJobs(token)).filter(matchesCategory);
   const available = assigned.length ? [] : (await deps.availableJobs(token)).filter(matchesCategory);
   let lastCandidateError: unknown;

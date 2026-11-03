@@ -54,6 +54,8 @@ type JobRow = {
   settlement_lease_until?: Date | null;
   service_id: string | null;
   selection_mode: "claim" | "proposals" | "invite";
+  source_file_required: boolean;
+  source_file_url: string | null;
   proposal_count: number;
   invitation_wallet: string | null;
   invitation_status: string | null;
@@ -90,6 +92,8 @@ function presentJob(job: JobRow) {
     doerAgent: job.doer_agent_id ? { id: job.doer_agent_id, name: job.doer_agent_name } : null,
     title: job.title,
     description: job.description,
+    sourceFileRequired: job.source_file_required,
+    sourceFileUrl: job.source_file_url,
     acceptanceCriteria: job.acceptance_criteria,
     asset: job.asset.toUpperCase(),
     amount: formatUnits(BigInt(job.amount_raw), job.asset === "eth" ? 18 : config.USDG_DECIMALS),
@@ -135,6 +139,7 @@ export type NewJobRecord = {
   amountRaw: bigint;
   deadlineAt: Date | null;
   selectionMode?: "claim" | "proposals" | "invite";
+  sourceFileRequired?: boolean;
   invitation?: { wallet: string; message: string | null };
   service?: { id: string; providerId: string; agentId: string | null };
 };
@@ -152,8 +157,8 @@ export async function createJobRecord(clientId: string, job: NewJobRecord) {
     );
     if (Number(recent.rows[0].count) >= 10) throw new ApiError(429, "job_creation_rate_limited", "You have reached the job creation limit. Try again later.");
     await client.query(
-      `INSERT INTO jobs (id,client_id,title,description,acceptance_criteria,asset,amount_raw,token_address,deadline_at,category,service_id,reserved_doer_id,reserved_agent_id,selection_mode)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      `INSERT INTO jobs (id,client_id,title,description,acceptance_criteria,asset,amount_raw,token_address,deadline_at,category,service_id,reserved_doer_id,reserved_agent_id,selection_mode,source_file_required)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
       [
         id,
         clientId,
@@ -169,6 +174,7 @@ export async function createJobRecord(clientId: string, job: NewJobRecord) {
         job.service?.providerId ?? null,
         job.service?.agentId ?? null,
         job.service ? "claim" : job.selectionMode ?? "claim",
+        job.sourceFileRequired ?? false,
       ],
     );
     await client.query(
@@ -304,6 +310,7 @@ jobsRouter.post(
       amountRaw: amount,
       deadlineAt: parseDeadline(request.body?.deadlineAt),
       selectionMode: input.selectionMode,
+      sourceFileRequired: input.sourceFileRequired,
       invitation: input.inviteWallet ? { wallet: input.inviteWallet, message: input.inviteMessage ?? null } : undefined,
     });
     response.status(201).json({ data: created });
@@ -364,8 +371,8 @@ jobsRouter.post(
     assertNewWorkAvailable(config.PAUSE_NEW_WORK);
     const id = uuid.parse(request.params.id);
     const txHash = z.string().regex(/^0x[0-9a-fA-F]{64}$/).parse(request.body?.transactionHash);
-    const job = await db.query<FundingTerms & { status: string }>(
-      `SELECT j.id,j.asset,j.amount_raw::text,j.token_address,j.status,u.wallet_address AS client_wallet
+    const job = await db.query<FundingTerms & { status: string; category: string; source_file_required: boolean; source_file_url: string | null }>(
+      `SELECT j.id,j.asset,j.amount_raw::text,j.token_address,j.status,j.category,j.source_file_required,j.source_file_url,u.wallet_address AS client_wallet
        FROM jobs j JOIN users u ON u.id=j.client_id WHERE j.id=$1`,
       [id],
     );
@@ -379,6 +386,8 @@ jobsRouter.post(
       }
       throw new ApiError(409, "job_not_fundable", "This job is not awaiting funding.");
     }
+    if (terms.category === "translation" && terms.source_file_required && !terms.source_file_url)
+      throw new ApiError(409, "source_file_required", "Attach the translation source document before funding this job.");
     const escrow = await db.query<{ address: string }>("SELECT address FROM job_escrow_wallets WHERE job_id=$1", [id]);
     const verified = await verifyJobFunding(terms, escrow.rows[0].address, txHash);
 

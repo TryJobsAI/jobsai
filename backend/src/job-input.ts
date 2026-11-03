@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ApiError } from "./http.js";
 
 export const amountSchema = z.string().regex(/^(?:0|[1-9]\d{0,11})(?:\.\d{1,18})?$/, "Enter a plain decimal amount.");
-export const jobCategories = ["writing", "image_generation", "research", "design", "coding", "data", "other"] as const;
+export const jobCategories = ["writing", "translation", "image_generation", "research", "design", "coding", "data", "other"] as const;
 
 export const createJobInputSchema = z.object({
   title: z.string().trim().min(3).max(160),
@@ -13,8 +13,11 @@ export const createJobInputSchema = z.object({
   asset: z.enum(["eth", "usdg"]),
   amount: amountSchema,
   selectionMode: z.enum(["claim", "proposals", "invite"]).default("claim"),
+  sourceFileRequired: z.boolean().default(false),
   inviteWallet: z.string().regex(/^0x[0-9a-fA-F]{40}$/, "Enter the worker's 0x wallet address.").transform((value) => value.toLowerCase()).optional(),
   inviteMessage: z.string().trim().min(1).max(1_000).optional(),
+}).refine((input) => !input.sourceFileRequired || input.category === "translation", {
+  message: "Source document uploads are available for translation jobs.", path: ["sourceFileRequired"],
 });
 
 export const submissionInputSchema = z.object({

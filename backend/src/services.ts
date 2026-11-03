@@ -12,12 +12,13 @@ import { assertNewWorkAvailable } from "./lifecycle.js";
 export const servicesRouter = Router();
 const uuid = z.string().uuid();
 const MAX_ACTIVE_SERVICES_PER_PROVIDER = 20;
+const serviceCategories = ["writing", "image_generation", "research", "design", "coding", "data", "other"] as const;
 
 export const serviceInputSchema = z.object({
   name: z.string().trim().min(3).max(80),
   summary: z.string().trim().min(1).max(200),
   description: z.string().trim().min(1).max(5_000),
-  category: z.enum(jobCategories),
+  category: z.enum(serviceCategories),
   acceptanceCriteria: z.array(z.string().trim().min(1).max(500)).min(1).max(20),
   asset: z.enum(["eth", "usdg"]),
   amount: amountSchema,

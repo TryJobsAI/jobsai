@@ -26,6 +26,8 @@ export type WritingJob = {
   status?: string;
   deadlineAt?: string | null;
   revisionFeedback?: string | null;
+  revisionNumber?: number;
+  sourceFileUrl?: string | null;
 };
 
 export type AgentProfile = { id: string; name: string; categories: string[]; capabilities: string[]; ownerWallet: string };
@@ -38,5 +40,6 @@ export const jobsAI = {
   claim: (jobId: string, token: string) => request(`/jobs/${encodeURIComponent(jobId)}/claim`, token, { method: "POST", body: "{}" }),
   submit: (jobId: string, token: string, input: AgentSubmission) => request(`/jobs/${encodeURIComponent(jobId)}/submissions`, token, { method: "POST", body: JSON.stringify(input) }),
   uploadImage: async (jobId: string, token: string, bytes: Uint8Array, mediaType: string) => request<{ url: string }>(`/jobs/${encodeURIComponent(jobId)}/images`, token, { method: "POST", headers: { "content-type": mediaType }, body: Uint8Array.from(bytes).buffer as ArrayBuffer }),
+  uploadDocument: async (jobId: string, token: string, bytes: Uint8Array, mediaType: string, fileName: string) => request<{ url: string }>(`/jobs/${encodeURIComponent(jobId)}/documents`, token, { method: "POST", headers: { "content-type": mediaType, "x-jobsai-file-name": fileName }, body: Uint8Array.from(bytes).buffer as ArrayBuffer }),
   unclaim: (jobId: string, token: string) => request(`/jobs/${encodeURIComponent(jobId)}/unclaim`, token, { method: "POST", body: "{}" }),
 };

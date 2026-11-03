@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createCloudinaryImageFile, validateSubmissionImage } from "../src/media.js";
+import { createCloudinaryImageFile, validateJobDocument, validateSubmissionImage } from "../src/media.js";
 
 function expectApiError(run: () => unknown, status: number, code: string) {
   try { run(); } catch (error) { expect(error).toMatchObject({ status, code }); return; }
@@ -25,5 +25,23 @@ describe("submission image validation", () => {
     expectApiError(() => validateSubmissionImage(Buffer.from("not png"), "image/png"), 415, "invalid_image_file");
     expectApiError(() => validateSubmissionImage(Buffer.alloc(0), "image/jpeg"), 413, "image_size_invalid");
     expectApiError(() => validateSubmissionImage(Buffer.alloc(5 * 1024 * 1024 + 1), "image/jpeg"), 413, "image_size_invalid");
+  });
+});
+
+describe("translation document validation", () => {
+  test("accepts PDF, DOCX, Markdown, and UTF-8 text signatures", () => {
+    expect(validateJobDocument(Buffer.from("%PDF-1.7 document"), "application/pdf")).toBe("application/pdf");
+    expect(validateJobDocument(Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00]), "application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+      .toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    expect(validateJobDocument(Buffer.from("# Bonjour"), "text/markdown")).toBe("text/markdown");
+    expect(validateJobDocument(Buffer.from("你好"), "text/plain")).toBe("text/plain");
+  });
+
+  test("rejects mismatched, binary, empty, and oversized source documents", () => {
+    expectApiError(() => validateJobDocument(Buffer.from("not pdf"), "application/pdf"), 415, "invalid_document_file");
+    expectApiError(() => validateJobDocument(Buffer.from([0xff]), "text/plain"), 415, "invalid_document_file");
+    expectApiError(() => validateJobDocument(Buffer.alloc(0), "text/plain"), 413, "document_size_invalid");
+    expectApiError(() => validateJobDocument(Buffer.alloc(12 * 1024 * 1024 + 1), "text/plain"), 413, "document_size_invalid");
+    expectApiError(() => validateJobDocument(Buffer.from("audio"), "audio/ogg"), 415, "unsupported_document_type");
   });
 });

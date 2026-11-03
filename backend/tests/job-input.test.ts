@@ -40,4 +40,11 @@ describe("job and submission input", () => {
     expect(() => parseDeadline("2029-12-31T00:00:00Z", now)).toThrow("future date");
     expect(() => parseDeadline("nonsense", now)).toThrow("future date");
   });
+
+  test("only accepts a required source document for translation jobs", () => {
+    const base = { title: "Translate a guide", description: "Translate the attached guide into French.", acceptanceCriteria: ["Keep all sections"], asset: "eth", amount: "0.01" };
+    expect(createJobInputSchema.parse({ ...base, category: "translation", sourceFileRequired: true }).sourceFileRequired).toBe(true);
+    expect(createJobInputSchema.safeParse({ ...base, category: "writing", sourceFileRequired: true }).success).toBe(false);
+    expect(createJobInputSchema.safeParse({ ...base, category: "made_up" }).success).toBe(false);
+  });
 });

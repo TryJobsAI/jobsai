@@ -10,7 +10,7 @@ import { ApiError, asyncRoute } from "./http.js";
 import { jobCategories, submissionInputSchema } from "./job-input.js";
 import { releaseChosenWorker, releaseExpiredClaims } from "./jobs.js";
 import { proposalInputSchema, proposalsByWorker, submitProposal } from "./proposals.js";
-import { IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES, uploadSubmissionImage } from "./media.js";
+import { DOCUMENT_CONTENT_TYPES, IMAGE_CONTENT_TYPES, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, uploadSubmissionDocument, uploadSubmissionImage } from "./media.js";
 
 export const agentsRouter = Router();
 export const agentRuntimeRouter = Router();
@@ -138,6 +138,20 @@ agentsRouter.patch("/:id", requireAuth, asyncRoute(async (request, response) => 
 
 agentRuntimeRouter.use(requireAgentRuntime);
 
+agentRuntimeRouter.post("/jobs/:id/documents", express.raw({ type: [...DOCUMENT_CONTENT_TYPES], limit: MAX_DOCUMENT_BYTES }), asyncRoute(async (request, response) => {
+  const id = uuid.parse(request.params.id);
+  if (!Buffer.isBuffer(request.body)) throw new ApiError(415, "unsupported_document_type", "Use a PDF, DOCX, Markdown, or plain text document.");
+  const job = await db.query<{ status: string }>(
+    `SELECT status FROM jobs WHERE id=$1 AND doer_agent_id=$2 AND doer_id=$3 AND category='translation'`,
+    [id, request.agentRuntime!.agentId, request.agentRuntime!.ownerUserId],
+  );
+  if (!job.rowCount || !["in_progress", "revision_requested"].includes(job.rows[0].status))
+    throw new ApiError(403, "agent_document_upload_forbidden", "This translation worker is not assigned to an active translation job.");
+  const contentType = request.header("content-type")?.split(";")[0].trim().toLowerCase() || "";
+  const uploaded = await uploadSubmissionDocument(request.body, contentType, id, request.header("x-jobsai-file-name"));
+  response.status(201).json({ data: uploaded });
+}));
+
 agentRuntimeRouter.post("/jobs/:id/images", express.raw({ type: [...IMAGE_CONTENT_TYPES], limit: MAX_IMAGE_BYTES }), asyncRoute(async (request, response) => {
   const id = uuid.parse(request.params.id);
   if (!Buffer.isBuffer(request.body)) throw new ApiError(415, "unsupported_image_type", "The generated result must be a JPEG, PNG, WebP, or GIF image.");
@@ -159,7 +173,7 @@ agentRuntimeRouter.get("/profile", (request,response) => {
 
 agentRuntimeRouter.get("/assigned-jobs", asyncRoute(async (request,response) => {
   const result=await db.query(
-    `SELECT j.id,j.title,j.description,j.acceptance_criteria AS "acceptanceCriteria",j.category,j.asset,
+    `SELECT j.id,j.title,j.description,j.source_file_url AS "sourceFileUrl",j.acceptance_criteria AS "acceptanceCriteria",j.category,j.asset,
             j.amount_raw::text AS "amountRaw",j.deadline_at AS "deadlineAt",j.status,
             r.revision AS "revisionNumber",r.feedback_ciphertext AS "revisionFeedbackCiphertext"
        FROM jobs j LEFT JOIN LATERAL (
@@ -184,7 +198,7 @@ agentRuntimeRouter.get("/jobs", asyncRoute(async (request,response) => {
   const selection = z.enum(["claim", "proposals"]).default("claim").parse(request.query.selection);
   await releaseExpiredClaims();
   const result = await db.query(
-    `SELECT j.id,j.title,j.description,j.acceptance_criteria AS "acceptanceCriteria",j.category,j.asset,
+    `SELECT j.id,j.title,j.description,j.source_file_url AS "sourceFileUrl",j.acceptance_criteria AS "acceptanceCriteria",j.category,j.asset,
             j.amount_raw::text AS "amountRaw",j.deadline_at AS "deadlineAt",j.funded_at AS "fundedAt",j.selection_mode AS "selectionMode"
        FROM jobs j JOIN ai_agents a ON a.id=$1 AND a.active
       WHERE j.status='ready' AND j.client_id<>a.owner_user_id AND j.selection_mode=$3
@@ -235,6 +249,8 @@ agentRuntimeRouter.post("/jobs/:id/submissions", asyncRoute(async (request,respo
     assertCanSubmit(job,agent.ownerUserId);
     if (job.category === "image_generation" && !input.evidence.some((url) => url.startsWith("https://res.cloudinary.com/")))
       throw new ApiError(400,"generated_image_required","An image-generation submission must include its hosted JobsAI image.");
+    if (job.category === "translation" && !input.evidence.some((url) => /^https:\/\/res\.cloudinary\.com\/[^/]+\/raw\/upload\//.test(url)))
+      throw new ApiError(400,"translated_document_required","A translation submission must include its downloadable PDF, DOCX, or Markdown file.");
     const previous=await client.query<{revision:number}>("SELECT COALESCE(MAX(revision),0)::int AS revision FROM job_submissions WHERE job_id=$1",[id]);
     const revision=previous.rows[0].revision+1,payload=JSON.stringify(input);
     const inserted=await client.query<{id:string;created_at:Date}>(
