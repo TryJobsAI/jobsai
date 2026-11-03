@@ -30,6 +30,37 @@ function InformationDialog({ info, onClose }) {
   </section></div>;
 }
 
+const aiCheckStatusLabel = { met: 'Met', not_met: 'Not met', unclear: 'Check manually' };
+const aiCheckVerdictLabel = { looks_complete: 'Looks complete', needs_attention: 'Needs attention', unclear: 'Some criteria need a manual check' };
+
+function AiCheckPanel({ jobId, submission, token }) {
+  const [state, setState] = useState({ kind: 'loading' });
+  useEffect(() => {
+    let cancelled = false, attempts = 0, timer;
+    async function load() {
+      try {
+        const { data } = await JobsAIAPI.aiCheck(jobId, submission.id, token);
+        if (cancelled) return;
+        if (data.status === 'running' && attempts++ < 15) { setState({ kind: 'loading' }); timer = setTimeout(load, 3000); return; }
+        setState(data.status === 'done' ? { kind: 'done', check: data } : { kind: 'error', message: 'The AI check is taking longer than usual. Reopen this job in a minute.' });
+      } catch (error) {
+        if (!cancelled) setState(error.code === 'ai_check_unconfigured' ? { kind: 'hidden' } : { kind: 'error', message: error.message || 'The AI check could not run. Review the work against the criteria yourself.' });
+      }
+    }
+    load();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [jobId, submission.id, token]);
+  if (state.kind === 'hidden') return null;
+  const check = state.check;
+  return <section className={`ai-check ${check ? `ai-check-${check.verdict}` : ''}`} aria-live="polite" aria-label="AI check">
+    <div className="ai-check-heading"><span className="ai-check-title">AI check · submission {submission.revision}</span>{check && <strong>{check.metCount}/{check.total} met · {aiCheckVerdictLabel[check.verdict]}</strong>}</div>
+    {state.kind === 'loading' && <p className="ai-check-loading"><i aria-hidden="true" />Reading the submission against each acceptance criterion…</p>}
+    {state.kind === 'error' && <p>{state.message}</p>}
+    {check && <><p>{check.summary}</p><ul>{check.criteria.map((item, index) => <li key={index} className={`ai-check-${item.status}`}><span className="ai-check-mark" aria-hidden="true">{item.status === 'met' ? '✓' : item.status === 'not_met' ? '✗' : '?'}</span><div><b>{item.criterion}</b><span className="ai-check-status">{aiCheckStatusLabel[item.status]}</span><p>{item.reason}</p>{item.evidence && <blockquote>“{item.evidence}”</blockquote>}</div></li>)}</ul>
+      <small>Advice only, so you still decide. It reads the text of the submission, not linked files or images{check.truncated ? ', and only the first part of this long deliverable' : ''}. Quotes are checked against the submission.</small></>}
+  </section>;
+}
+
 function WorkflowDialog({ dialog, onClose, onSubmit, onVideoHelp, busy, userTag }) {
   if (!dialog) return null;
   const { mode, job } = dialog;
@@ -50,6 +81,7 @@ function WorkflowDialog({ dialog, onClose, onSubmit, onVideoHelp, busy, userTag 
   return <div className="workspace-overlay"><section className="workspace-modal workspace-information workflow-dialog" role="dialog" aria-modal="true" aria-labelledby="workflow-dialog-title">
     <span className="workspace-modal-symbol" aria-hidden="true">i</span><h2 id="workflow-dialog-title">{job.title}</h2><p>{job.amount} {job.asset} · {job.status.replaceAll('_', ' ')}</p>{otherWallet && <p>With <UserTagLink userTag={otherUserTag} walletAddress={otherWallet} /></p>}<p>{job.description}</p>{job.sourceFileUrl && <p><a href={job.sourceFileUrl} target="_blank" rel="noreferrer">Open source document</a></p>}{job.acceptanceCriteria?.length > 0 && <><h3>Acceptance criteria</h3><ul>{job.acceptanceCriteria.map((item, index) => <li key={index}>{item}</li>)}</ul></>}
     {dialog.submissions?.map(item => <article className="submission-history-item" key={item.id}><h3>Submission {item.revision}{item.submittedByAgent?.name ? ` · AI worker ${item.submittedByAgent.name}` : ''}</h3><p className="submission-worker-identity">Submitted by <UserTagLink userTag={item.submittedByUserTag} walletAddress={null}>Worker</UserTagLink></p><p><strong>Summary</strong><br />{item.summary}</p><p><strong>Deliverable</strong><br />{item.deliverable}</p>{item.evidence?.length > 0 && <ul>{item.evidence.map(link => <li key={link}><a href={link} target="_blank" rel="noreferrer">{link.startsWith("https://res.cloudinary.com/") ? <img className="submission-image-preview" src={link} alt="Submitted image preview" loading="lazy" /> : link}</a></li>)}</ul>}</article>)}
+    {dialog.submissions?.length > 0 && dialog.token && <AiCheckPanel jobId={job.id} submission={dialog.submissions[dialog.submissions.length - 1]} token={dialog.token} />}
     {dialog.revisions?.length > 0 && <><h3>Revision requests</h3>{dialog.revisions.map(item => <p className="submission-revision" key={item.id}>Revision {item.revision}: {item.feedback}</p>)}</>}
     {dialog.submissions?.length === 0 && <p>No submissions have been recorded yet.</p>}
     <div className="workflow-dialog-actions"><button type="button" className="pill outline" onClick={onClose}>Close</button>{job.clientWallet?.toLowerCase() === dialog.walletAddress?.toLowerCase() && job.status === 'submitted' && <><button type="button" className="pill outline" onClick={() => dialog.onRequestRevision(job)}>Request revision</button><button type="button" className="pill primary" onClick={() => dialog.onAccept(job)}>Accept and release payment</button></>}</div>
@@ -117,7 +149,7 @@ function MyWork({ session, walletAddress, userTag }) {
     try {
       const [submissionResponse, revisionResponse] = await Promise.all([JobsAIAPI.submissions(job.id, session.token), JobsAIAPI.revisions(job.id, session.token)]);
       setFeedback(null);
-      setDialog({ mode: 'review', job, submissions: submissionResponse?.data || [], revisions: revisionResponse?.data || [], walletAddress, onRequestRevision: item => setDialog({ mode: 'revision', job: item }), onAccept: item => accept(item) });
+      setDialog({ mode: 'review', job, token: session.token, submissions: submissionResponse?.data || [], revisions: revisionResponse?.data || [], walletAddress, onRequestRevision: item => setDialog({ mode: 'revision', job: item }), onAccept: item => accept(item) });
     } catch (error) { setFeedback({ title: 'Could not load job history', message: error.message || 'JobsAI could not retrieve this job’s history.', kind: 'error' }); }
   }
 

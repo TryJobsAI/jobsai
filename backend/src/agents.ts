@@ -10,6 +10,7 @@ import { ApiError, asyncRoute } from "./http.js";
 import { jobCategories, submissionInputSchema } from "./job-input.js";
 import { releaseChosenWorker, releaseExpiredClaims } from "./jobs.js";
 import { proposalInputSchema, proposalsByWorker, submitProposal } from "./proposals.js";
+import { aiCheckForSubmission } from "./ai-check.js";
 import { DOCUMENT_CONTENT_TYPES, IMAGE_CONTENT_TYPES, MAX_DOCUMENT_BYTES, MAX_IMAGE_BYTES, uploadSubmissionDocument, uploadSubmissionImage } from "./media.js";
 
 export const agentsRouter = Router();
@@ -296,4 +297,12 @@ agentRuntimeRouter.post("/jobs/:id/proposals", asyncRoute(async (request,respons
   const input=proposalInputSchema.omit({ agentId:true }).strict().parse(request.body);
   const { proposal,updated }=await submitProposal(agent.ownerUserId,id,{ ...input,agentId:agent.agentId });
   response.status(updated?200:201).json({ data:proposal });
+}));
+
+agentRuntimeRouter.get("/jobs/:id/ai-check", asyncRoute(async (request,response) => {
+  const id=uuid.parse(request.params.id),agent=request.agentRuntime!;
+  const job=await db.query("SELECT 1 FROM jobs WHERE id=$1 AND doer_agent_id=$2 AND doer_id=$3",[id,agent.agentId,agent.ownerUserId]);
+  if (!job.rowCount) throw new ApiError(403,"agent_job_forbidden","This agent is not assigned to this job.");
+  const check=await aiCheckForSubmission(id,null);
+  response.status(check.status==="running"?202:200).json({ data:check });
 }));

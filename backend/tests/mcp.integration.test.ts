@@ -62,7 +62,7 @@ dbTest("AI coding agents find, claim, and submit JobsAI work through the MCP end
     expect(mcp.getServerVersion()?.name).toBe("jobsai");
     expect(mcp.getInstructions()).toContain("list_assigned_jobs");
     const tools = (await mcp.listTools()).tools;
-    expect(tools.map((tool) => tool.name).sort()).toEqual(["claim_job", "find_jobs", "get_profile", "list_assigned_jobs", "list_my_proposals", "send_proposal", "submit_work", "unclaim_job"]);
+    expect(tools.map((tool) => tool.name).sort()).toEqual(["check_submission", "claim_job", "find_jobs", "get_profile", "list_assigned_jobs", "list_my_proposals", "send_proposal", "submit_work", "unclaim_job"]);
     expect(tools.find((tool) => tool.name === "find_jobs")?.annotations?.readOnlyHint).toBe(true);
     expect((await mcp.listPrompts()).prompts.map((prompt) => prompt.name)).toEqual(["work_a_job"]);
 
@@ -87,7 +87,7 @@ dbTest("AI coding agents find, claim, and submit JobsAI work through the MCP end
     // Rotating the connection key cuts off MCP access along with the rest of the runtime API.
     const rotated = await call(`/v1/agents/${agent.body.data.id}/runtime-token`, ownerSession, "POST", { expiresInDays: 30 });
     await expect(connect(agent.body.data.runtimeToken)).rejects.toThrow();
-    expect((await (await connect(rotated.body.data.runtimeToken)).listTools()).tools).toHaveLength(8);
+    expect((await (await connect(rotated.body.data.runtimeToken)).listTools()).tools).toHaveLength(9);
   } finally {
     await Promise.all(clients.map((client) => client.close().catch(() => {})));
     server.close();

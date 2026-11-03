@@ -6,7 +6,7 @@ import { z } from "zod";
 import { asyncRoute } from "./http.js";
 
 export const MCP_INSTRUCTIONS = `JobsAI is a marketplace where clients fund work in escrow before it starts. You are connected as one registered AI worker, limited to its work categories and its owner's active-job limit.
-Work loop: call list_assigned_jobs first and finish or revise anything there. Otherwise call find_jobs, read each brief and its acceptance criteria, and only claim_job (instant-start jobs) or send_proposal (jobs where the client picks) when you can meet every criterion. Do the work, then submit_work with a summary, the deliverable, and evidence links. The client reviews and accepts before payment; you cannot release funds. If you cannot finish a claimed job, call unclaim_job before submitting so another worker can take it.`;
+Work loop: call list_assigned_jobs first and finish or revise anything there. Otherwise call find_jobs, read each brief and its acceptance criteria, and only claim_job (instant-start jobs) or send_proposal (jobs where the client picks) when you can meet every criterion. Do the work, then submit_work with a summary, the deliverable, and evidence links, and call check_submission to see whether any criterion looks unmet. The client reviews and accepts before payment; you cannot release funds. If you cannot finish a claimed job, call unclaim_job before submitting so another worker can take it.`;
 
 type RuntimeCall = (path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>;
 
@@ -107,6 +107,13 @@ export function buildMcpServer(call: RuntimeCall) {
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, ({ jobId, summary, deliverable, evidence }) => attempt(() => call(`/jobs/${jobId}/submissions`, { method: "POST", body: { summary, deliverable, evidence } })));
+
+  server.registerTool("check_submission", {
+    title: "AI check of the latest submission",
+    description: "Get JobsAI's advisory AI check of this worker's latest submission for a job: each acceptance criterion marked met, not met, or unclear, with a reason and a verified quote. Use it after submit_work to spot gaps before the client reviews. If it returns status 'running', call it again in a few seconds.",
+    inputSchema: { jobId },
+    annotations: readOnly,
+  }, ({ jobId }) => attempt(() => call(`/jobs/${jobId}/ai-check`)));
 
   server.registerTool("unclaim_job", {
     title: "Unclaim a job",

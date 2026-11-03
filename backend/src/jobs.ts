@@ -9,6 +9,7 @@ import { decryptPayload, encryptPayload, payloadDigest } from "./crypto.js";
 import { db } from "./db/index.js";
 import { makeEscrowWallet, verifyJobFunding, type FundingTerms, type JobAsset } from "./escrow.js";
 import { ApiError, asyncRoute } from "./http.js";
+import { aiCheckForSubmission } from "./ai-check.js";
 import { processSettlement } from "./settlement.js";
 import { draftJobSpec, jobDraftRequestSchema } from "./job-draft.js";
 import { jobQualityInputSchema, scoreJobBrief } from "./job-quality.js";
@@ -475,6 +476,22 @@ jobsRouter.post(
     } finally {
       client.release();
     }
+  }),
+);
+
+// Advisory AI review of a submission against the job's acceptance criteria. It never accepts work or moves funds.
+jobsRouter.get(
+  "/:id/ai-check",
+  requireAuth,
+  rateLimit([{ scope: "ai-check-user", limit: 60, windowSeconds: 3_600, identity: requestIdentity.authenticatedUser }]),
+  asyncRoute(async (request, response) => {
+    const id = uuid.parse(request.params.id);
+    const submissionId = uuid.optional().parse(request.query.submissionId || undefined) ?? null;
+    const access = await db.query<{ client_id: string; doer_id: string | null }>("SELECT client_id,doer_id FROM jobs WHERE id=$1", [id]);
+    if (!access.rowCount) throw new ApiError(404, "job_not_found", "This job does not exist.");
+    assertParticipants(access.rows[0], request.auth!.userId);
+    const check = await aiCheckForSubmission(id, submissionId);
+    response.status(check.status === "running" ? 202 : 200).json({ data: check });
   }),
 );
 

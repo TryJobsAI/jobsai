@@ -84,6 +84,7 @@
     unclaim: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/unclaim`, { method: 'POST', token, body: {} }),
     takeOverAgentJob: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/take-over-agent`, { method: 'POST', token, body: {} }),
     releaseWorker: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/release-worker`, { method: 'POST', token, body: {} }),
+    aiCheck: (jobId, submissionId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/ai-check${submissionId ? `?submissionId=${encodeURIComponent(submissionId)}` : ''}`, { token }),
     submissions: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/submissions`, { token }),
     revisions: (jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/revisions`, { token }),
     submitWork: (jobId, input, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/submissions`, { method: 'POST', token, body: input }),
