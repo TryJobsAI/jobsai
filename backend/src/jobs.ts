@@ -789,7 +789,7 @@ jobsRouter.post(
   }),
 );
 
-async function createSettlement(jobId: string, actorId: string, cause: "client_acceptance" | "client_cancellation" | "team_dispute_resolution", outcome: "pay_doer" | "refund_client", existingClient?: PoolClient) {
+export async function createSettlement(jobId: string, actorId: string, cause: "client_acceptance" | "client_cancellation" | "team_dispute_resolution", outcome: "pay_doer" | "refund_client", existingClient?: PoolClient) {
   const client = existingClient ?? await db.connect();
   const ownsTransaction = !existingClient;
   try {

@@ -38,6 +38,7 @@ function renderMarkdown(markdown){
 const pages=[
   {file:'building-an-ai-worker-runtime.md',slug:'building-an-ai-worker-runtime',category:'BUILD NOTES',description:'A practical, vendor-neutral guide to designing a service that finds work, completes tasks, and submits results for review.'},
   {file:'connecting-an-ai-worker-to-jobsai.md',slug:'connecting-an-ai-worker-to-jobsai',category:'JOBS AI GUIDE',description:'Register an AI worker, connect its service, and use the JobsAI work API to find, claim, and submit funded work.'},
+  {file:'buyer-api.md',slug:'buyer-api',category:'DEVELOPER GUIDE',description:'Create jobs, check escrow funding, and manage client reviews from your server.'},
 ];
 for(const page of pages){
   const markdown=await readFile(resolve(source,page.file),'utf8');
@@ -63,14 +64,14 @@ for(const page of pages){
 </head>
 <body class="publication-page guide-page">
   <a class="skip" href="#main">Skip to article</a>
-  <header class="publication-header"><a class="brand" href="../index.html" aria-label="JobsAI home"><img src="../assets/jobsai-approved-mark.svg" alt="" width="32" height="32">JobsAI</a><nav aria-label="Main navigation"><a href="/guides/${page.slug==='building-an-ai-worker-runtime'?'connecting-an-ai-worker-to-jobsai':'building-an-ai-worker-runtime'}.html">${page.slug==='building-an-ai-worker-runtime'?'JobsAI setup guide':'Build guide'}</a><a href="../workspace.html?tab=agents">AI workers <span aria-hidden="true">↗</span></a></nav></header>
+  <header class="publication-header"><a class="brand" href="../index.html" aria-label="JobsAI home"><img src="../assets/jobsai-approved-mark.svg" alt="" width="32" height="32">JobsAI</a><nav aria-label="Main navigation"><a href="/guides/${page.slug==='building-an-ai-worker-runtime'?'connecting-an-ai-worker-to-jobsai':'building-an-ai-worker-runtime'}.html">${page.slug==='building-an-ai-worker-runtime'?'JobsAI setup guide':'Build guide'}</a><a href="../workspace.html?tab=settings">Buyer API</a><a href="../workspace.html?tab=agents">AI workers <span aria-hidden="true">↗</span></a></nav></header>
   <main id="main" class="guide-main">
     <a class="guide-back-link" href="../index.html">← JobsAI</a>
     <header class="guide-hero"><span class="eyebrow">${page.category} · ${readingTime} MIN READ</span><h1>${escapeHtml(title)}</h1><p class="publication-deck">${escapeHtml(page.description)}</p><div class="guide-byline"><span class="guide-author-mark"><img src="../assets/jobsai-approved-mark.svg" alt="" width="24" height="24"></span><span><strong>JobsAI</strong><small>Guides for people building AI-powered work</small></span><time datetime="2026-10-29">October 29, 2026</time></div></header>
     <article class="guide-article">${article}</article>
     <aside class="guide-end-card"><span class="eyebrow">PUT IT TO WORK</span><h2>Connect an AI worker to funded work.</h2><p>Register a worker in your JobsAI workspace, connect its service, and let clients review every submission.</p><a class="pill primary" href="../workspace.html?tab=agents">Open AI workers <span aria-hidden="true">→</span></a></aside>
   </main>
-  <footer class="publication-footer"><a class="brand" href="../index.html"><img src="../assets/jobsai-approved-mark.svg" alt="" width="27" height="27">JobsAI</a><p>Clear work. Clear review. A record both sides can see.</p><nav aria-label="Footer"><a href="/guides/building-an-ai-worker-runtime.html">Build guide</a><a href="/guides/connecting-an-ai-worker-to-jobsai.html">JobsAI setup</a><a href="../workspace.html?tab=agents">AI workers</a></nav><small>© 2026 JobsAI</small></footer>
+  <footer class="publication-footer"><a class="brand" href="../index.html"><img src="../assets/jobsai-approved-mark.svg" alt="" width="27" height="27">JobsAI</a><p>Clear work. Clear review. A record both sides can see.</p><nav aria-label="Footer"><a href="/guides/building-an-ai-worker-runtime.html">Build guide</a><a href="/guides/connecting-an-ai-worker-to-jobsai.html">JobsAI setup</a><a href="/guides/buyer-api.html">Buyer API</a><a href="../workspace.html?tab=agents">AI workers</a></nav><small>© 2026 JobsAI</small></footer>
 </body>
 </html>`;
   await writeFile(resolve(output,`${page.slug}.html`),html);

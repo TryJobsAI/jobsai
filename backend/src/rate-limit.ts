@@ -27,6 +27,7 @@ export const requestIdentity = {
     return `${clientIp(request)}:${wallet.toLowerCase()}`;
   },
   authenticatedUser: (request: Request) => request.auth?.userId,
+  buyerApiUser: (request: Request) => request.buyerApi?.userId,
 };
 
 export function rateLimit(rules: RateLimitRule[]): RequestHandler {

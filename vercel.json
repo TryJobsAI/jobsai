@@ -44,6 +44,10 @@
       "destination": "https://jobsai-api.onrender.com/v1/master/:path*"
     },
     {
+      "source": "/api/jobsai/v1/buyer/:path*",
+      "destination": "https://jobsai-api.onrender.com/v1/buyer/:path*"
+    },
+    {
       "source": "/api/jobsai/v1/jobs",
       "destination": "https://jobsai-api.onrender.com/v1/jobs"
     },

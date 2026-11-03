@@ -28,14 +28,14 @@ export async function proxyJobsAI(request) {
   const incoming = new URL(request.url);
   if (!incoming.pathname.startsWith(`${API_PREFIX}/`)) return json(404, "not_found", "This endpoint does not exist.");
   const apiPath = incoming.pathname.slice(API_PREFIX.length);
-  if (!(AUTH_ROUTES.has(apiPath) || apiPath === "/v1/jobs" || apiPath.startsWith("/v1/jobs/") || apiPath === "/v1/services" || apiPath.startsWith("/v1/services/") || apiPath.startsWith("/v1/team/") || apiPath.startsWith("/v1/workers/") || apiPath.startsWith("/v1/master/") || apiPath === "/v1/media/images" || apiPath === "/v1/speech/transcribe"))
+  if (!(AUTH_ROUTES.has(apiPath) || apiPath === "/v1/jobs" || apiPath.startsWith("/v1/jobs/") || apiPath === "/v1/services" || apiPath.startsWith("/v1/services/") || apiPath.startsWith("/v1/team/") || apiPath.startsWith("/v1/workers/") || apiPath.startsWith("/v1/master/") || apiPath.startsWith("/v1/buyer/") || apiPath === "/v1/media/images" || apiPath === "/v1/speech/transcribe"))
     return json(404, "not_found", "This endpoint does not exist.");
 
   if (apiPath === "/v1/media/images" && (method !== "POST" || !IMAGE_CONTENT_TYPES.has((request.headers.get("content-type") || "").split(";")[0].trim().toLowerCase())))
     return json(415, "unsupported_image_type", "Upload a JPEG, PNG, WebP, or GIF image. Video files are not accepted.");
   if (apiPath === "/v1/speech/transcribe" && (method !== "POST" || !SPEECH_CONTENT_TYPES.has((request.headers.get("content-type") || "").split(";")[0].trim().toLowerCase())))
     return json(415, "unsupported_audio_type", "Firefox voice typing supports OGG or WebM audio.");
-  const isJobSourceUpload = /^\/v1\/jobs\/[0-9a-f-]+\/source-file$/i.test(apiPath);
+  const isJobSourceUpload = /^\/v1\/(?:jobs|buyer\/jobs)\/[0-9a-f-]+\/source-file$/i.test(apiPath);
   if (isJobSourceUpload && (method !== "POST" || !DOCUMENT_CONTENT_TYPES.has((request.headers.get("content-type") || "").split(";")[0].trim().toLowerCase())))
     return json(415, "unsupported_document_type", "Use a PDF, DOCX, Markdown, or plain text document.");
   const maxBodyBytes = apiPath === "/v1/media/images" ? MAX_IMAGE_BYTES : apiPath === "/v1/speech/transcribe" ? MAX_SPEECH_AUDIO_BYTES : isJobSourceUpload ? MAX_JOB_SOURCE_BYTES : MAX_BODY_BYTES;

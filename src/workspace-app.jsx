@@ -1062,7 +1062,7 @@ function WorkerProfilePanel({ session }) {
     try { await navigator.clipboard.writeText(url); setFeedback({ title: 'Profile link copied', message: url, kind: 'success' }); }
     catch { setFeedback({ title: 'Your public profile link', message: url, kind: 'info' }); }
   }
-  if (!loaded) return <section className="worker-profile-panel"><p>Loading your profile…</p></section>;
+  if (!loaded) return <section className="worker-profile-panel" aria-busy="true"><div className="worker-profile-loading" /></section>;
   return <section className="worker-profile-panel" aria-labelledby="worker-profile-title">
     <div className="created-jobs-heading"><div><span className="eyebrow">YOUR PUBLIC WORK PROFILE</span><h2 id="worker-profile-title">Worker profile</h2><p>Share your availability and rates. Your email and phone number are sent to JobsAI for review and are never shown on your public page.</p></div>{profile?.status === 'approved' && <span className="worker-verified-badge">✓ JobsAI approved</span>}</div>
     {profile && <><div className="worker-profile-stats"><article><span>Completed jobs</span><strong>{profile.completedJobs}</strong></article><article><span>Median time to first submission</span><strong>{elapsedLabel(profile.medianFirstDeliverySeconds)}</strong><small>For completed jobs only. This measures delivery speed, not quality.</small></article></div>
@@ -1082,6 +1082,53 @@ function WorkerProfilePanel({ session }) {
   </section>;
 }
 
+function BuyerApiSettings({ session }) {
+  const [keyInfo, setKeyInfo] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [revealedKey, setRevealedKey] = useState('');
+  const [modal, setModal] = useState(null);
+  useEffect(() => {
+    let active = true;
+    JobsAIAPI.buyerApiKeyInfo(session.token).then(response => { if (active) setKeyInfo(response.data); })
+      .catch(error => { if (active) setModal({ title: 'Could not load API key settings', message: error.message || 'JobsAI could not retrieve your key settings.', kind: 'error' }); })
+      .finally(() => { if (active) setLoaded(true); });
+    return () => { active = false; };
+  }, [session.token]);
+  async function generateKey() {
+    setBusy(true); setModal({ title: 'Creating your buyer API key', message: 'Generating a new key and revoking the previous key if one exists.', kind: 'loading' });
+    try {
+      const response = await JobsAIAPI.createBuyerApiKey(session.token);
+      setKeyInfo({ id: response.data.id, prefix: response.data.prefix, createdAt: response.data.createdAt, lastUsedAt: null });
+      setRevealedKey(response.data.apiKey);
+      setModal({ title: 'Your new API key', message: 'Copy this key now. It will not be shown again. Keep it on your server and never put it in browser code.', kind: 'key' });
+    } catch (error) { setModal({ title: 'Could not create API key', message: error.message || 'JobsAI could not create your key.', kind: 'error' }); }
+    finally { setBusy(false); }
+  }
+  async function revokeKey() {
+    setBusy(true);
+    try {
+      await JobsAIAPI.revokeBuyerApiKey(session.token);
+      setKeyInfo(null); setRevealedKey(''); setModal({ title: 'API key revoked', message: 'Requests using that key will no longer be accepted.', kind: 'success' });
+    } catch (error) { setModal({ title: 'Could not revoke API key', message: error.message || 'JobsAI could not revoke your key.', kind: 'error' }); }
+    finally { setBusy(false); }
+  }
+  async function copyKey() {
+    try { await navigator.clipboard.writeText(revealedKey); setModal({ title: 'API key copied', message: 'Store it in your server environment now. JobsAI will not show it again after you close this message.', kind: 'success' }); }
+    catch { setModal({ title: 'Copy your API key', message: 'Copy this key into your server environment now.', kind: 'key' }); }
+  }
+  if (!loaded) return <section className="buyer-api-settings" aria-busy="true"><div className="worker-profile-loading" /></section>;
+  return <section className="buyer-api-settings" aria-labelledby="buyer-api-settings-title">
+    <article className="created-jobs-card"><div className="created-jobs-heading"><div><span className="eyebrow">SERVER-TO-SERVER ACCESS</span><h2 id="buyer-api-settings-title">Buyer API key</h2><p>Use a key from your own server to create jobs, check escrow funding, and manage client reviews through the JobsAI API.</p></div></div>
+      <div className="buyer-api-note"><strong>Funding stays in your control.</strong><span>The API gives you each job’s escrow address. Send the required ETH or USDG there with your signer, then call the funding-status endpoint. The API key cannot sign transactions or move funds from your wallet.</span></div>
+      {keyInfo ? <div className="buyer-api-current"><div><span className="eyebrow">ACTIVE KEY</span><code>{keyInfo.prefix}••••••••</code><small>Created {new Date(keyInfo.createdAt).toLocaleString()} · {keyInfo.lastUsedAt ? `Last used ${new Date(keyInfo.lastUsedAt).toLocaleString()}` : 'Not used yet'}</small></div><div className="buyer-api-actions"><button className="pill outline" onClick={generateKey} disabled={busy}>Rotate key</button><button className="pill outline" onClick={revokeKey} disabled={busy}>Revoke key</button></div></div> : <p>No buyer API key is active.</p>}
+      {!keyInfo && <button className="pill primary" onClick={generateKey} disabled={busy}>Generate buyer API key</button>}
+      <p><a href="/guides/buyer-api.html" target="_blank" rel="noreferrer">Read the buyer API guide ↗</a></p>
+    </article>
+    {modal && <div className="workspace-overlay"><section className={`workspace-modal ${modal.kind || ''}`} role="dialog" aria-modal="true" aria-labelledby="buyer-api-modal-title"><span className="workspace-modal-symbol" aria-hidden="true">{modal.kind === 'loading' ? <i /> : modal.kind === 'success' ? '✓' : modal.kind === 'error' ? '!' : 'i'}</span><h2 id="buyer-api-modal-title">{modal.title}</h2><p>{modal.message}</p>{modal.kind === 'key' && <><code className="buyer-api-revealed-key">{revealedKey}</code><button className="pill outline" onClick={copyKey}>Copy key</button></>}{modal.kind !== 'loading' && <button className="pill primary" onClick={() => { setModal(null); setRevealedKey(''); }}>Got it</button>}</section></div>}
+  </section>;
+}
+
 function WorkspaceContext() {
   const { address, chainId, isConnected, isReconnecting } = useAccount();
   const { disconnectAsync } = useDisconnect();
@@ -1093,6 +1140,7 @@ function WorkspaceContext() {
   const agentsRoot = document.getElementById('agents-root');
   const servicesRoot = document.getElementById('services-root');
   const workerProfileRoot = document.getElementById('worker-profile-root');
+  const buyerApiSettingsRoot = document.getElementById('buyer-api-settings-root');
 
   useEffect(() => {
     if (!session?.token) { goToAuth(); return; }
@@ -1111,7 +1159,7 @@ function WorkspaceContext() {
     goToAuth();
   }
 
-  if (!header || !jobsRoot || !workRoot || !createJobRoot || !agentsRoot || !servicesRoot || !workerProfileRoot || !session?.token) return null;
+  if (!header || !jobsRoot || !workRoot || !createJobRoot || !agentsRoot || !servicesRoot || !workerProfileRoot || !buyerApiSettingsRoot || !session?.token) return null;
   return <>
     {createPortal(<><ConnectButton.Custom>{({ account, openAccountModal, mounted }) => <button className="workspace-account-button" onClick={openAccountModal} disabled={!mounted || !account} aria-label={`Connected wallet ${account?.displayName || ''}`}><span className="workspace-account-status" />{account?.displayName || 'Connected wallet'}</button>}</ConnectButton.Custom><button className="workspace-signout" onClick={signOut}>Sign out</button></>, header)}
     {createPortal(<FundedJobs session={session} />, jobsRoot)}
@@ -1120,6 +1168,7 @@ function WorkspaceContext() {
     {createPortal(<AgentManagement session={session} />, agentsRoot)}
     {createPortal(<ServicesPanel session={session} />, servicesRoot)}
     {createPortal(<WorkerProfilePanel session={session} />, workerProfileRoot)}
+    {createPortal(<BuyerApiSettings session={session} />, buyerApiSettingsRoot)}
   </>;
 }
 
