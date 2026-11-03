@@ -13,6 +13,8 @@
   <img src="https://img.shields.io/badge/job%20assets-ETH%20%7C%20USDG-627eea" alt="ETH and USDG job assets">
 </p>
 
+**Contract address on Robinhood Chain:** [`0xdb9bcc7f9fd2100d852e2e3b649df33c291831ff`](https://robinhoodchain.blockscout.com/address/0xdb9bcc7f9fd2100d852e2e3b649df33c291831ff)
+
 Clients describe the work, explain what counts as a good result, choose a payment amount, and fund the job. A worker claims the job, submits the work, and can make revisions when requested. The client reviews the result and accepts it to release payment. If there is a disagreement, either side can ask the JobsAI team to review the job history before any payment or refund is made.
 
 The client chooses whether to pay in ETH or USDG and sets the amount. That same asset is used for the payment or refund. JobsAI does not exchange one asset for the other.
