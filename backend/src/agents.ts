@@ -8,7 +8,8 @@ import { decryptPayload, encryptPayload, payloadDigest } from "./crypto.js";
 import { db } from "./db/index.js";
 import { ApiError, asyncRoute } from "./http.js";
 import { jobCategories, submissionInputSchema } from "./job-input.js";
-import { releaseExpiredClaims } from "./jobs.js";
+import { releaseAcceptedProposal, releaseExpiredClaims } from "./jobs.js";
+import { proposalInputSchema, proposalsByWorker, submitProposal } from "./proposals.js";
 import { IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES, uploadSubmissionImage } from "./media.js";
 
 export const agentsRouter = Router();
@@ -179,14 +180,16 @@ agentRuntimeRouter.get("/assigned-jobs", asyncRoute(async (request,response) => 
 
 agentRuntimeRouter.get("/jobs", asyncRoute(async (request,response) => {
   const limit = z.coerce.number().int().min(1).max(30).default(20).parse(request.query.limit);
+  // Older runtimes only claim, so proposal-only jobs are listed when asked for explicitly.
+  const selection = z.enum(["claim", "proposals"]).default("claim").parse(request.query.selection);
   await releaseExpiredClaims();
   const result = await db.query(
     `SELECT j.id,j.title,j.description,j.acceptance_criteria AS "acceptanceCriteria",j.category,j.asset,
-            j.amount_raw::text AS "amountRaw",j.deadline_at AS "deadlineAt",j.funded_at AS "fundedAt"
+            j.amount_raw::text AS "amountRaw",j.deadline_at AS "deadlineAt",j.funded_at AS "fundedAt",j.selection_mode AS "selectionMode"
        FROM jobs j JOIN ai_agents a ON a.id=$1 AND a.active
-      WHERE j.status='ready' AND j.client_id<>a.owner_user_id
+      WHERE j.status='ready' AND j.client_id<>a.owner_user_id AND j.selection_mode=$3
         AND (j.deadline_at IS NULL OR j.deadline_at>now()) AND j.category=ANY(a.categories)
-      ORDER BY j.funded_at ASC NULLS LAST,j.created_at ASC LIMIT $2`,[request.agentRuntime!.agentId,limit],
+      ORDER BY j.funded_at ASC NULLS LAST,j.created_at ASC LIMIT $2`,[request.agentRuntime!.agentId,limit,selection],
   );
   response.json({ data:result.rows });
 }));
@@ -198,8 +201,8 @@ agentRuntimeRouter.post("/jobs/:id/claim", asyncRoute(async (request,response) =
   try {
     await client.query("BEGIN");
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))",[agent.ownerUserId]);
-    const row=await client.query<{ client_id:string;status:string;category:string;deadline_at:Date|null;owner_user_id:string;categories:string[];active:boolean }>(
-      `SELECT j.client_id,j.status,j.category,j.deadline_at,a.owner_user_id,a.categories,a.active
+    const row=await client.query<{ client_id:string;status:string;category:string;deadline_at:Date|null;selection_mode:string;owner_user_id:string;categories:string[];active:boolean }>(
+      `SELECT j.client_id,j.status,j.category,j.deadline_at,j.selection_mode,a.owner_user_id,a.categories,a.active
          FROM jobs j CROSS JOIN ai_agents a WHERE j.id=$1 AND a.id=$2 FOR UPDATE OF j,a`,[id,agent.agentId],
     );
     const job=row.rows[0];
@@ -208,6 +211,7 @@ agentRuntimeRouter.post("/jobs/:id/claim", asyncRoute(async (request,response) =
     if (job.client_id===job.owner_user_id) throw new ApiError(409,"agent_cannot_claim_own_job","An agent cannot claim a job funded by its owner.");
     if (!job.categories.includes(job.category)) throw new ApiError(403,"agent_category_mismatch","This job is outside the agent’s registered categories.");
     if (job.status!=="ready" || (job.deadline_at && job.deadline_at<=new Date())) throw new ApiError(409,"job_not_claimable","This funded job is no longer available to claim.");
+    if (job.selection_mode==="proposals") throw new ApiError(409,"job_requires_proposal","The client is choosing from proposals for this job. Send a proposal instead of claiming it.");
     const active=await client.query<{count:string}>("SELECT count(*)::text AS count FROM jobs WHERE doer_id=$1 AND status IN ('in_progress','submitted','revision_requested','disputed','settlement_pending')",[job.owner_user_id]);
     assertActiveClaimCapacity(Number(active.rows[0].count),config.MAX_ACTIVE_CLAIMS_PER_WALLET);
     await client.query("UPDATE jobs SET doer_id=$2,doer_agent_id=$3,status='in_progress',claimed_at=now(),updated_at=now() WHERE id=$1",[id,job.owner_user_id,agent.agentId]);
@@ -258,9 +262,21 @@ agentRuntimeRouter.post("/jobs/:id/unclaim", asyncRoute(async (request,response)
     if (job.doer_agent_id!==agent.agentId || job.doer_id!==agent.ownerUserId) throw new ApiError(403,"agent_job_forbidden","This agent is not assigned to this job.");
     if (job.status!=="in_progress" || job.has_submissions) throw new ApiError(409,"job_not_unclaimable","An agent can unclaim only before submitting work.");
     await client.query("UPDATE jobs SET doer_id=NULL,doer_agent_id=NULL,status='ready',claimed_at=NULL,updated_at=now() WHERE id=$1",[id]);
+    await releaseAcceptedProposal(client,id);
     await client.query("INSERT INTO job_events(job_id,actor_id,event_type,details) VALUES($1,$2,'job.unclaimed',$3)",[id,agent.ownerUserId,JSON.stringify({workerType:"ai",agentId:agent.agentId})]);
     await client.query("COMMIT");
     response.json({data:{jobId:id,status:"ready"}});
   } catch(error) { await client.query("ROLLBACK"); throw error; }
   finally { client.release(); }
+}));
+
+agentRuntimeRouter.get("/proposals", asyncRoute(async (request,response) => {
+  response.json({ data:await proposalsByWorker(request.agentRuntime!.ownerUserId,request.agentRuntime!.agentId) });
+}));
+
+agentRuntimeRouter.post("/jobs/:id/proposals", asyncRoute(async (request,response) => {
+  const id=uuid.parse(request.params.id),agent=request.agentRuntime!;
+  const input=proposalInputSchema.omit({ agentId:true }).strict().parse(request.body);
+  const { proposal,updated }=await submitProposal(agent.ownerUserId,id,{ ...input,agentId:agent.agentId });
+  response.status(updated?200:201).json({ data:proposal });
 }));

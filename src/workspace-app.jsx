@@ -189,18 +189,47 @@ function goToAuth() {
   location.replace(`auth.html?next=${encodeURIComponent(next)}`);
 }
 
+const shortWallet = wallet => wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : '';
+
+function ProposalDialog({ job, agents, existing, busy, onClose, onSend, onWithdraw }) {
+  const eligibleAgents = agents.filter(agent => agent.categories?.includes(job.category));
+  const [pitch, setPitch] = useState(existing?.status === 'pending' ? existing.pitch : '');
+  const [deliveryDays, setDeliveryDays] = useState(existing?.deliveryDays ? String(existing.deliveryDays) : '');
+  const [agentId, setAgentId] = useState(existing?.agent?.id || '');
+  return <div className="workspace-overlay"><section className="workspace-modal workspace-information workflow-dialog" role="dialog" aria-modal="true" aria-labelledby="proposal-dialog-title">
+    <span className="workspace-modal-symbol" aria-hidden="true">✎</span><h2 id="proposal-dialog-title">{existing?.status === 'pending' ? 'Update your proposal' : 'Send a proposal'}</h2>
+    <p>{job.title} · {job.amount} {job.asset} · {job.proposalCount || 0} {job.proposalCount === 1 ? 'proposal' : 'proposals'} so far</p>
+    <p>The client reads every proposal and picks one worker. The payment is already in escrow, so the price is fixed. Tell them why you are the right fit.</p>
+    <form onSubmit={event => { event.preventDefault(); onSend({ pitch: pitch.trim(), ...(deliveryDays ? { deliveryDays: Number(deliveryDays) } : {}), ...(agentId ? { agentId } : {}) }); }}>
+      <label>Your pitch <small>{pitch.trim().length}/2000 · at least 20 characters</small><textarea required minLength="20" maxLength="2000" rows="5" value={pitch} onChange={event => setPitch(event.target.value)} placeholder="Relevant work you have done, how you would approach this job, and anything you need from the client." /></label>
+      <div className="create-job-payment-row"><label>Delivery time <small>Optional</small><select value={deliveryDays} onChange={event => setDeliveryDays(event.target.value)}><option value="">Not stated</option>{[1, 2, 3, 5, 7, 14, 30].map(days => <option key={days} value={days}>{days} {days === 1 ? 'day' : 'days'}</option>)}</select></label>
+        <label>Who does the work<select value={agentId} onChange={event => setAgentId(event.target.value)}><option value="">Me (human)</option>{eligibleAgents.map(agent => <option key={agent.id} value={agent.id}>AI worker · {agent.name}</option>)}</select></label></div>
+      <div className="workflow-dialog-actions"><button type="button" className="pill outline" onClick={onClose} disabled={busy}>Close</button>{existing?.status === 'pending' && <button type="button" className="pill outline" onClick={() => onWithdraw(existing)} disabled={busy}>Withdraw</button>}<button type="submit" className="pill primary" disabled={busy || pitch.trim().length < 20}>{busy ? 'Sending…' : existing?.status === 'pending' ? 'Update proposal' : 'Send proposal'}</button></div>
+    </form>
+  </section></div>;
+}
+
 function FundedJobs({ session }) {
   const [jobs, setJobs] = useState([]);
   const [busy, setBusy] = useState('');
+  const [proposing, setProposing] = useState(null);
+  const [myProposals, setMyProposals] = useState({});
+  const [agents, setAgents] = useState([]);
   const [feedback, setFeedback] = useState({ title: 'Loading funded jobs', message: 'Checking for currently funded work…', kind: 'loading' });
   const [jobInfo, setJobInfo] = useState(null);
 
   async function refresh() {
     setFeedback({ title: 'Loading funded jobs', message: 'Checking for currently funded work…', kind: 'loading' });
     try {
-      const response = await JobsAIAPI.readyJobs();
+      const [response, proposalResponse, agentResponse] = await Promise.all([
+        JobsAIAPI.readyJobs(),
+        JobsAIAPI.myProposals(session.token).catch(() => ({ data: [] })),
+        JobsAIAPI.myAgents(session.token).catch(() => ({ data: [] })),
+      ]);
       const ready = Array.isArray(response?.data) ? response.data : [];
       setJobs(ready);
+      setMyProposals(Object.fromEntries((proposalResponse?.data || []).map(item => [item.jobId, item])));
+      setAgents((agentResponse?.data || []).filter(agent => agent.active));
       setFeedback(ready.length ? null : { title: 'No funded jobs are ready', message: 'Check again later or refresh to look for newly funded work.', kind: 'info' });
     } catch (error) { setJobs([]); setFeedback({ title: 'Could not load funded jobs', message: error.message || 'JobsAI could not load funded jobs.', kind: 'error' }); }
   }
@@ -219,6 +248,32 @@ function FundedJobs({ session }) {
     finally { setBusy(''); }
   }
 
+  async function sendProposal(input) {
+    const job = proposing;
+    setBusy(job.id);
+    try {
+      const { data } = await JobsAIAPI.sendProposal(job.id, input, session.token);
+      const isNew = myProposals[job.id]?.status !== 'pending';
+      setMyProposals(current => ({ ...current, [job.id]: data }));
+      if (isNew) setJobs(current => current.map(item => item.id === job.id ? { ...item, proposalCount: (item.proposalCount || 0) + 1 } : item));
+      setProposing(null);
+      setFeedback({ title: isNew ? 'Proposal sent' : 'Proposal updated', message: 'The client will compare proposals and choose one worker. If they choose yours, the job appears in My work, already assigned to you.', kind: 'success' });
+    } catch (error) { setFeedback({ title: 'Could not send proposal', message: error.message || 'JobsAI could not send this proposal.', kind: 'error' }); }
+    finally { setBusy(''); }
+  }
+
+  async function withdrawProposal(proposal) {
+    setBusy(proposal.jobId);
+    try {
+      await JobsAIAPI.withdrawProposal(proposal.jobId, proposal.id, session.token);
+      setMyProposals(current => ({ ...current, [proposal.jobId]: { ...proposal, status: 'withdrawn' } }));
+      setJobs(current => current.map(item => item.id === proposal.jobId ? { ...item, proposalCount: Math.max(0, (item.proposalCount || 1) - 1) } : item));
+      setProposing(null);
+      setFeedback({ title: 'Proposal withdrawn', message: 'The client can no longer choose it. You can send a new proposal while the job is still open.', kind: 'success' });
+    } catch (error) { setFeedback({ title: 'Could not withdraw proposal', message: error.message || 'JobsAI could not withdraw this proposal.', kind: 'error' }); }
+    finally { setBusy(''); }
+  }
+
   return <>
     <div className="live-jobs-heading">
       <div><span className="eyebrow">LIVE · FUNDED ONCHAIN</span><h2 id="live-jobs-title">Jobs ready to claim</h2><button className="text-info-button" onClick={() => setJobInfo({ title: 'Review a funded job', paragraphs: ['Open job details to read the scope, acceptance criteria, listed asset, and deadline before claiming. Claiming assigns the work to you and does not move funds.'] })}>How funded work works</button></div>
@@ -226,10 +281,14 @@ function FundedJobs({ session }) {
     </div>
     <div className="live-jobs-list">{jobs.map(job => <article className="live-job-card" key={job.id}>
       <div className="live-job-top"><h3>{job.title}</h3><strong className="live-job-amount">{job.amount} {job.asset}</strong></div>
-      <div className="live-job-actions"><button className="pill outline" onClick={() => setJobInfo({ title: job.title, paragraphs: [job.description, job.deadlineAt && !Number.isNaN(new Date(job.deadlineAt).valueOf()) ? `Deadline: ${new Date(job.deadlineAt).toLocaleString()}` : 'No deadline provided'], itemsLabel: 'Acceptance criteria', items: job.acceptanceCriteria || [] })}>View details</button><button className="pill primary live-job-claim" disabled={!!busy} onClick={() => claim(job)}>Claim job</button></div>
+      {job.selectionMode === 'proposals' && <p className="live-job-mode"><span className="proposal-mode-badge">Client picks from proposals</span>{job.proposalCount || 0} {job.proposalCount === 1 ? 'proposal' : 'proposals'}{myProposals[job.id]?.status === 'pending' && <b> · Yours is waiting</b>}</p>}
+      <div className="live-job-actions"><button className="pill outline" onClick={() => setJobInfo({ title: job.title, paragraphs: [job.description, job.deadlineAt && !Number.isNaN(new Date(job.deadlineAt).valueOf()) ? `Deadline: ${new Date(job.deadlineAt).toLocaleString()}` : 'No deadline provided'], itemsLabel: 'Acceptance criteria', items: job.acceptanceCriteria || [] })}>View details</button>{job.selectionMode === 'proposals'
+        ? <button className="pill primary live-job-claim" disabled={!!busy || ['accepted', 'released'].includes(myProposals[job.id]?.status) || job.clientWallet?.toLowerCase() === session.walletAddress?.toLowerCase()} onClick={() => setProposing(job)}>{myProposals[job.id]?.status === 'pending' ? 'Edit proposal' : 'Send proposal'}</button>
+        : <button className="pill primary live-job-claim" disabled={!!busy} onClick={() => claim(job)}>Claim job</button>}</div>
     </article>)}</div>
     {feedback && <div className="workspace-overlay" role="presentation"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="workspace-modal-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="workspace-modal-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
     <InformationDialog info={jobInfo} onClose={() => setJobInfo(null)} />
+    {proposing && <ProposalDialog job={proposing} agents={agents} existing={myProposals[proposing.id]} busy={busy === proposing.id} onClose={() => setProposing(null)} onSend={sendProposal} onWithdraw={withdrawProposal} />}
   </>;
 }
 
@@ -243,6 +302,8 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
   const [asset, setAsset] = useState('eth');
   const [amount, setAmount] = useState('');
   const [deadlineAt, setDeadlineAt] = useState('');
+  const [selectionMode, setSelectionMode] = useState('claim');
+  const [reviewing, setReviewing] = useState(null);
   const [draftPrompt, setDraftPrompt] = useState('');
   const [drafting, setDrafting] = useState(false);
   const [quality, setQuality] = useState(null);
@@ -355,13 +416,13 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
     setSaving(true);
     setFeedback({ title: 'Creating your job', message: 'Setting up its escrow address and funding terms…', kind: 'loading' });
     try {
-      const input = { title, description: jobDescription, acceptanceCriteria, category, asset, amount, ...(deadlineAt ? { deadlineAt: new Date(deadlineAt).toISOString() } : {}) };
+      const input = { title, description: jobDescription, acceptanceCriteria, category, asset, amount, selectionMode, ...(deadlineAt ? { deadlineAt: new Date(deadlineAt).toISOString() } : {}) };
       const response = await JobsAIAPI.createJob(input, session.token);
       const created = response.data;
       setJobs(current => [created, ...current.filter(job => job.id !== created.id)]);
       setLoaded(true);
-      setTitle(''); setDescription(''); setCriteria(''); setCategory('writing'); setAmount(''); setDeadlineAt(''); setCodeRepo(''); setCodeFiles([]);
-      setFeedback({ title: 'Job created', message: `Fund ${created.amount} ${created.asset} from your connected wallet to publish this job for claiming.`, kind: 'success' });
+      setTitle(''); setDescription(''); setCriteria(''); setCategory('writing'); setAmount(''); setDeadlineAt(''); setCodeRepo(''); setCodeFiles([]); setSelectionMode('claim');
+      setFeedback({ title: 'Job created', message: created.selectionMode === 'proposals' ? `Fund ${created.amount} ${created.asset} from your connected wallet to publish this job. Workers then send proposals, and you choose one from Created jobs → Proposals.` : `Fund ${created.amount} ${created.asset} from your connected wallet to publish this job for claiming.`, kind: 'success' });
     } catch (error) {
       setFeedback({ title: 'Could not create job', message: error.message || 'JobsAI could not create this job.', kind: 'error' });
     } finally { setSaving(false); }
@@ -397,6 +458,30 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
     } finally { setSaving(false); }
   }
 
+  async function openProposals(job) {
+    setFeedback({ title: 'Loading proposals', message: 'Retrieving the proposals workers sent for this job…', kind: 'loading' });
+    try {
+      const { data } = await JobsAIAPI.proposals(job.id, session.token);
+      setFeedback(null);
+      setReviewing({ job, proposals: data || [] });
+    } catch (error) { setFeedback({ title: 'Could not load proposals', message: error.message || 'JobsAI could not load proposals for this job.', kind: 'error' }); }
+  }
+
+  async function chooseProposal(proposal) {
+    const job = reviewing.job;
+    setSaving(true);
+    setFeedback({ title: 'Assigning the job', message: 'Giving this job to the worker you chose…', kind: 'loading' });
+    try {
+      await JobsAIAPI.acceptProposal(job.id, proposal.id, session.token);
+      setReviewing(null);
+      await loadJobs(false);
+      document.dispatchEvent(new Event('jobsai:work-updated'));
+      setFeedback({ title: 'Worker chosen', message: `${proposal.agent ? `AI worker ${proposal.agent.name}` : shortWallet(proposal.proposerWallet)} is now assigned. Follow the work and review submissions in My work. Funds stay in escrow until you accept.`, kind: 'success' });
+    } catch (error) {
+      setFeedback({ title: 'Could not choose this proposal', message: error.message || 'JobsAI could not assign this worker.', kind: 'error' });
+    } finally { setSaving(false); }
+  }
+
   async function cancelFundedJob(job) {
     setSaving(true);
     setJobInfo(null);
@@ -422,6 +507,10 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
       <div className="criteria-field"><div className="criteria-field-header"><label htmlFor="job-acceptance-criteria">Acceptance criteria</label><button type="button" className="inline-info-button" onClick={() => setJobInfo({ title: 'Acceptance criteria', paragraphs: ['Enter one clear condition per line. For example: “Works on mobile and desktop” or “Include the source files.” The worker and client use these conditions to review each submission and revision.'] })}>How to write criteria</button></div><textarea id="job-acceptance-criteria" required rows="4" value={criteria} onChange={event => setCriteria(event.target.value)} /></div>
       <div className="create-job-payment-row"><label>Payment asset<select value={asset} onChange={event => setAsset(event.target.value)}><option value="eth">ETH</option><option value="usdg">USDG</option></select></label><label>Amount<input required inputMode="decimal" pattern="(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,18})?" value={amount} onChange={event => setAmount(event.target.value)} /></label></div>
       <label>Deadline<input type="datetime-local" value={deadlineAt} onChange={event => setDeadlineAt(event.target.value)} /></label>
+      <fieldset className="selection-mode-field"><legend>How workers start</legend>
+        <label className={selectionMode === 'claim' ? 'selected' : ''}><input type="radio" name="selection-mode" value="claim" checked={selectionMode === 'claim'} onChange={() => setSelectionMode('claim')} /><span><b>Instant start</b><small>The first eligible worker to claim it starts right away.</small></span></label>
+        <label className={selectionMode === 'proposals' ? 'selected' : ''}><input type="radio" name="selection-mode" value="proposals" checked={selectionMode === 'proposals'} onChange={() => setSelectionMode('proposals')} /><span><b>Review proposals</b><small>Workers and AI workers pitch for it. You compare them and choose one.</small></span></label>
+      </fieldset>
       {quality && <section className={`job-quality job-quality-${quality.grade}`} aria-live="polite" aria-label="Brief strength"><div className="job-quality-heading"><span>Brief strength</span><strong>{quality.score}/100 · {{ strong: 'Strong', okay: 'Okay', needs_work: 'Needs work' }[quality.grade]}</strong></div><div className="job-quality-bar" aria-hidden="true"><i style={{ width: `${quality.score}%` }} /></div>{quality.checks.some(item => !item.passed) ? <ul>{quality.checks.filter(item => !item.passed).map(item => <li key={item.id}><b>{item.label}:</b> {item.fix}</li>)}</ul> : <p>Clear and checkable. Workers know what to deliver and how it will be reviewed.</p>}</section>}
       <button className="pill primary" type="submit" disabled={saving}>Create job</button>
     </form>
@@ -429,12 +518,24 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
       <div className="created-jobs-list">{jobs.map(job => <article className="created-job-item" key={job.id}><div className="created-job-summary"><h3>{job.title}</h3><strong>{job.amount} {job.asset}</strong></div>
         <div className="created-job-actions"><button className="pill outline" onClick={() => setJobInfo({ title: job.title, paragraphs: [`Status: ${job.status.replaceAll('_', ' ')}.`, job.description, job.deadlineAt ? `Deadline: ${new Date(job.deadlineAt).toLocaleString()}` : 'No deadline provided.', ...(job.pendingFundingHash ? ['A transfer was sent. Verify it to publish the job; do not send funds again.'] : [])], itemsLabel: 'Acceptance criteria', items: job.acceptanceCriteria || [], code: job.status === 'awaiting_funding' ? job.escrowAddress : undefined, codeLabel: 'Escrow address' })}>View details</button>
           {job.status === 'awaiting_funding' && <button className="pill primary" onClick={() => fundJob(job)} disabled={saving}>{job.pendingFundingHash ? 'Verify deposit' : 'Fund job'}</button>}
+          {job.status === 'ready' && job.selectionMode === 'proposals' && <button className="pill primary" onClick={() => openProposals(job)} disabled={saving}>Proposals ({job.proposalCount || 0})</button>}
           {job.status === 'ready' && <button className="pill outline" onClick={() => setJobInfo({ title: 'Cancel this funded job?', paragraphs: [`${job.amount} ${job.asset} will be returned from escrow to your connected wallet. The job will be removed from the work board while the onchain refund processes.`], confirmLabel: 'Cancel job and refund', onConfirm: () => cancelFundedJob(job) })} disabled={saving}>Cancel job</button>}
         </div>
       </article>)}</div>
     </section>
     {feedback && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="create-job-modal-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="create-job-modal-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
     <InformationDialog info={jobInfo} onClose={() => setJobInfo(null)} />
+    {reviewing && <div className="workspace-overlay"><section className="workspace-modal workspace-information workflow-dialog proposals-dialog" role="dialog" aria-modal="true" aria-labelledby="proposals-dialog-title">
+      <span className="workspace-modal-symbol" aria-hidden="true">✎</span><h2 id="proposals-dialog-title">Proposals</h2><p>{reviewing.job.title} · {reviewing.job.amount} {reviewing.job.asset}</p>
+      {reviewing.proposals.filter(item => item.status === 'pending').length === 0 && <p>No proposals are waiting yet. Workers see this job on the funded board with a Send proposal button. Check back soon.</p>}
+      <div className="proposal-list">{reviewing.proposals.filter(item => item.status === 'pending').map(proposal => <article className="proposal-card" key={proposal.id}>
+        <div className="proposal-card-top"><span className="agent-work-badge">{proposal.agent ? `AI worker · ${proposal.agent.name}` : 'Human worker'}</span><code>{shortWallet(proposal.proposerWallet)}</code></div>
+        <p>{proposal.pitch}</p>
+        <dl><div><dt>Delivery</dt><dd>{proposal.deliveryDays ? `${proposal.deliveryDays} ${proposal.deliveryDays === 1 ? 'day' : 'days'}` : 'Not stated'}</dd></div><div><dt>Completed jobs</dt><dd>{proposal.completedJobs}</dd></div><div><dt>Active now</dt><dd>{proposal.activeJobs}</dd></div></dl>
+        <button className="pill primary" onClick={() => chooseProposal(proposal)} disabled={saving}>Choose this worker</button>
+      </article>)}</div>
+      <div className="workflow-dialog-actions"><button className="pill outline" onClick={() => setReviewing(null)}>Close</button><button className="pill outline" onClick={() => openProposals(reviewing.job)}>Refresh</button></div>
+    </section></div>}
   </div>;
 }
 

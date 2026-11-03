@@ -11,6 +11,7 @@ import { IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES, uploadSubmissionImage } from "./m
 import { assertCanSubmit } from "./lifecycle.js";
 import { rateLimit, requestIdentity } from "./rate-limit.js";
 import { agentRuntimeRouter, agentsRouter } from "./agents.js";
+import { proposalsRouter } from "./proposals.js";
 import { servicesRouter } from "./services.js";
 
 const app = express();
@@ -70,6 +71,7 @@ app.post(
     response.status(201).json({ data: result });
   }),
 );
+app.use("/v1/jobs", proposalsRouter);
 app.use("/v1/jobs", jobsRouter);
 app.use("/v1/services", servicesRouter);
 app.use("/v1/agents", agentsRouter);

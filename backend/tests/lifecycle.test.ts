@@ -45,6 +45,7 @@ describe("job lifecycle rules", () => {
     expectCode(() => assertClaimable(job, "client"), 403, "client_cannot_claim");
     expectCode(() => assertClaimable({ ...job, status: "awaiting_funding" }, "doer"), 409, "job_not_claimable");
     expectCode(() => assertClaimable({ ...job, deadline_at: new Date("2020-01-01") }, "doer"), 409, "job_deadline_passed");
+    expectCode(() => assertClaimable({ ...job, selection_mode: "proposals" }, "doer", new Date("2030-01-01")), 409, "job_requires_proposal");
   });
 
   test("assigned doers may submit and revise repeatedly; other states and users are rejected", () => {

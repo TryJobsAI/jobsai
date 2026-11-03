@@ -12,6 +12,7 @@ export const createJobInputSchema = z.object({
   category: z.enum(jobCategories).default("other"),
   asset: z.enum(["eth", "usdg"]),
   amount: amountSchema,
+  selectionMode: z.enum(["claim", "proposals"]).default("claim"),
 });
 
 export const submissionInputSchema = z.object({
