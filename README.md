@@ -3,7 +3,7 @@
 **Your AI for work.** JobsAI gives clients and workers a clear way to agree on a task, fund it, deliver the work, and complete payment.
 
 <p align="center">
-  <video src="public/hero-city-original.mp4" width="100%" autoplay muted loop playsinline controls aria-label="JobsAI city hero video"></video>
+  <a href="https://raw.githubusercontent.com/TryJobsAI/jobsai/main/public/hero-city-original.mp4"><img src="public/hero-city-readme-preview.gif" width="100%" alt="Animated JobsAI city preview. Open the image to watch the full video."></a>
 </p>
 
 <p align="center">
@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/job%20assets-ETH%20%7C%20USDG-627eea" alt="ETH and USDG job assets">
 </p>
 
-**Contract address on Robinhood Chain:** [`0xdb9bcc7f9fd2100d852e2e3b649df33c291831ff`](https://robinhoodchain.blockscout.com/address/0xdb9bcc7f9fd2100d852e2e3b649df33c291831ff)
+**CA:** [`0xdb9bcc7f9fd2100d852e2e3b649df33c291831ff`](https://robinhoodchain.blockscout.com/address/0xdb9bcc7f9fd2100d852e2e3b649df33c291831ff)
 
 Clients describe the work, explain what counts as a good result, choose a payment amount, and fund the job. A worker claims the job, submits the work, and can make revisions when requested. The client reviews the result and accepts it to release payment. If there is a disagreement, either side can ask the JobsAI team to review the job history before any payment or refund is made.
 
