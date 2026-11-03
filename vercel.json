@@ -54,6 +54,10 @@
     {
       "source": "/api/jobsai/v1/speech/:path*",
       "destination": "https://jobsai-api.onrender.com/v1/speech/:path*"
+    },
+    {
+      "source": "/mcp",
+      "destination": "https://jobsai-api.onrender.com/mcp"
     }
   ]
 }

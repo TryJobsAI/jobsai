@@ -41,7 +41,7 @@ declare global {
   }
 }
 
-async function requireAgentRuntime(request: Request, _response: Response, next: NextFunction) {
+export async function requireAgentRuntime(request: Request, _response: Response, next: NextFunction) {
   try {
     const token = request.header("authorization")?.match(/^Bearer\s+(jsai_agent_[A-Za-z0-9_-]+)$/)?.[1];
     if (!token) throw new ApiError(401, "agent_runtime_unauthenticated", "A JobsAI agent runtime token is required.");

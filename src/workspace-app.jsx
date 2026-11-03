@@ -757,6 +757,8 @@ function CreateJobPanel({ session, walletAddress, chainId }) {
   </div>;
 }
 
+const mcpCommand = token => `claude mcp add --transport http jobsai ${location.origin}/mcp --header "Authorization: Bearer ${token}"`;
+
 const agentCategoryOptions = [
   ['writing', 'Writing'],
   ['image_generation', 'Image creation'],
@@ -839,6 +841,15 @@ function AgentManagement({ session }) {
         : setFeedback({ title: 'AI worker paused', message: `${agent.name} will no longer receive work.`, kind: 'success' }));
   }
 
+  async function copyMcpCommand() {
+    try {
+      await navigator.clipboard.writeText(mcpCommand(tokenDialog.token));
+      setFeedback({ title: 'Claude Code command copied', message: 'Paste it into your terminal. Claude Code can then find, claim, and submit JobsAI work as this AI worker. Treat the command like a password.', kind: 'success' });
+    } catch {
+      setFeedback({ title: 'Could not copy the command', message: 'Select the command and copy it manually.', kind: 'error' });
+    }
+  }
+
   async function copyToken() {
     try {
       await navigator.clipboard.writeText(tokenDialog.token);
@@ -859,7 +870,7 @@ function AgentManagement({ session }) {
       <button className="pill primary" type="submit" disabled={busy}>Register worker</button>
     </form>
     <div className="agent-list">{agents.map(agent => <article className="agent-card" key={agent.id}><div><span className={`agent-runtime-status ${agent.runtimeRecentlyActive ? 'online' : ''}`}>{!agent.active ? 'Paused' : agent.runtimeRecentlyActive ? 'Connected' : agent.lastRuntimeSeen ? 'Last connected ' + new Date(agent.lastRuntimeSeen).toLocaleDateString() : 'Not connected'}</span><h3>{agent.name}</h3><p>{agent.description}</p><small>{(agent.categories || []).map(agentCategoryLabel).join(', ')} · Key expires {agent.runtimeExpiresAt ? new Date(agent.runtimeExpiresAt).toLocaleDateString() : 'not set'}</small>{agent.capabilities?.length > 0 && <small>Skills: {agent.capabilities.join(', ')}</small>}</div><div className="agent-card-actions"><button className="pill outline" disabled={busy || !agent.active} onClick={() => rotate(agent)}>Replace key</button><button className="pill outline" disabled={busy} onClick={() => toggle(agent)}>{agent.active ? 'Pause worker' : 'Resume worker'}</button></div></article>)}</div>
-    {tokenDialog && <div className="workspace-overlay"><section className="workspace-modal workspace-information agent-token-dialog" role="dialog" aria-modal="true" aria-labelledby="agent-token-title"><span className="workspace-modal-symbol" aria-hidden="true">!</span><h2 id="agent-token-title">{tokenDialog.name} is registered</h2><p>Save this private connection key now. It is shown once and expires {new Date(tokenDialog.expiresAt).toLocaleDateString()}. Add it to your worker service’s private settings.</p><label>Private connection key<input readOnly value={tokenDialog.token} onFocus={event => event.target.select()} /></label><div className="workflow-dialog-actions"><button className="pill outline" onClick={() => setTokenDialog(null)}>Close</button><button className="pill primary" onClick={copyToken}>Copy key</button></div></section></div>}
+    {tokenDialog && <div className="workspace-overlay"><section className="workspace-modal workspace-information agent-token-dialog" role="dialog" aria-modal="true" aria-labelledby="agent-token-title"><span className="workspace-modal-symbol" aria-hidden="true">!</span><h2 id="agent-token-title">{tokenDialog.name} is registered</h2><p>Save this private connection key now. It is shown once and expires {new Date(tokenDialog.expiresAt).toLocaleDateString()}. Add it to your worker service’s private settings.</p><label>Private connection key<input readOnly value={tokenDialog.token} onFocus={event => event.target.select()} /></label><div className="agent-mcp-connect"><h3>Or work jobs from an AI coding agent</h3><p>JobsAI runs an MCP server, so Claude Code, Cursor, and other MCP clients can find, claim, and submit work as {tokenDialog.name}. Run this once in your terminal:</p><code>{mcpCommand(tokenDialog.token)}</code><small>Other clients: add <b>{`${location.origin}/mcp`}</b> as a remote HTTP server with the header <b>Authorization: Bearer</b> and this key. <a href="/guides/connecting-an-ai-worker-to-jobsai.html#6-connect-an-ai-coding-agent-with-mcp">Setup guide</a></small></div><div className="workflow-dialog-actions"><button className="pill outline" onClick={() => setTokenDialog(null)}>Close</button><button className="pill outline" onClick={copyMcpCommand}>Copy Claude Code command</button><button className="pill primary" onClick={copyToken}>Copy key</button></div></section></div>}
     {feedback && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="agent-feedback-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="agent-feedback-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}
   </section>;
 }

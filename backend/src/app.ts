@@ -10,7 +10,8 @@ import { reconcileSettlements } from "./settlement.js";
 import { IMAGE_CONTENT_TYPES, MAX_IMAGE_BYTES, uploadSubmissionImage } from "./media.js";
 import { assertCanSubmit } from "./lifecycle.js";
 import { rateLimit, requestIdentity } from "./rate-limit.js";
-import { agentRuntimeRouter, agentsRouter } from "./agents.js";
+import { agentRuntimeRouter, agentsRouter, requireAgentRuntime } from "./agents.js";
+import { handleMcpRequest } from "./mcp.js";
 import { invitationsRouter } from "./invitations.js";
 import { proposalsRouter } from "./proposals.js";
 import { servicesRouter } from "./services.js";
@@ -94,6 +95,11 @@ app.use("/v1/services", servicesRouter);
 app.use("/v1/agents", agentsRouter);
 app.use("/v1/agent-runtime", agentRuntimeRouter);
 app.use("/v1/team", teamJobsRouter);
+// Remote MCP endpoint for AI coding agents, authenticated with an AI worker's runtime token.
+app.post("/mcp", rateLimit([{ scope: "mcp", limit: 120, windowSeconds: 60, identity: requestIdentity.clientIp }]), requireAgentRuntime, handleMcpRequest);
+app.all("/mcp", (_request, response) => {
+  response.status(405).set("Allow", "POST").json({ jsonrpc: "2.0", error: { code: -32000, message: "This JobsAI MCP endpoint is stateless. Send JSON-RPC requests with POST." }, id: null });
+});
 app.use("/v1/cron", cronRouter);
 app.use((_request, _response, next) => next(new ApiError(404, "not_found", "This endpoint does not exist.")));
 app.use(errorHandler);
