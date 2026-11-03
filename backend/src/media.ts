@@ -11,6 +11,7 @@ export const DOCUMENT_CONTENT_TYPES = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "text/markdown",
   "text/plain",
+  "text/csv",
 ] as const;
 type DocumentContentType = (typeof DOCUMENT_CONTENT_TYPES)[number];
 
@@ -106,6 +107,7 @@ const documentExtensions: Record<DocumentContentType, string> = {
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
   "text/markdown": "md",
   "text/plain": "txt",
+  "text/csv": "csv",
 };
 
 export function validateJobDocument(bytes: Buffer, contentType: string) {
@@ -118,7 +120,7 @@ export function validateJobDocument(bytes: Buffer, contentType: string) {
   if (contentType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" &&
       !(bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && [0x03, 0x05, 0x07].includes(bytes[2]) && [0x04, 0x06, 0x08].includes(bytes[3])))
     throw new ApiError(415, "invalid_document_file", "The uploaded file does not match its document type.");
-  if (contentType === "text/markdown" || contentType === "text/plain") {
+  if (contentType === "text/markdown" || contentType === "text/plain" || contentType === "text/csv") {
     try {
       const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
       if (text.includes("\0")) throw new Error("binary text");

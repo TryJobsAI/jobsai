@@ -107,7 +107,7 @@
     teamDispute: (jobId, token) => request(`/v1/team/disputes/${encodeURIComponent(jobId)}`, { token }),
     resolveTeamDispute: (jobId, outcome, note, token) => request(`/v1/team/disputes/${encodeURIComponent(jobId)}/resolve`, { method: 'POST', token, body: { outcome, note } }),
     uploadImage: async (file, jobId, token) => request(`/v1/media/images?jobId=${encodeURIComponent(jobId)}`, { method: 'POST', token, body: await file.arrayBuffer(), contentType: file.type }),
-    uploadJobSource: async (file, jobId, token) => request(`/v1/jobs/${encodeURIComponent(jobId)}/source-file`, { method: 'POST', token, body: await file.arrayBuffer(), contentType: file.type || ({ pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', md: 'text/markdown', markdown: 'text/markdown', txt: 'text/plain' }[file.name.split('.').pop()?.toLowerCase()] || 'application/octet-stream') }),
+    uploadJobSource: async (file, jobId, token) => { const extension = file.name.split('.').pop()?.toLowerCase(); return request(`/v1/jobs/${encodeURIComponent(jobId)}/source-file`, { method: 'POST', token, body: await file.arrayBuffer(), contentType: extension === 'csv' ? 'text/csv' : file.type || ({ pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', md: 'text/markdown', markdown: 'text/markdown', txt: 'text/plain' }[extension] || 'application/octet-stream') }); },
     transcribeAudio: (blob, token) => request('/v1/speech/transcribe', { method: 'POST', token, body: blob, contentType: blob.type }),
   });
 })();

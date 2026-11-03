@@ -31,6 +31,7 @@ export const config = {
   openRouterApiKey: process.env.OPENROUTER_API_KEY?.trim() || "",
   openRouterImageModel: process.env.OPENROUTER_IMAGE_MODEL?.trim() || "recraft/recraft-v3",
   openRouterCodeModel: process.env.OPENROUTER_CODE_MODEL?.trim() || "~anthropic/claude-sonnet-latest",
+  openRouterDataModel: process.env.OPENROUTER_DATA_MODEL?.trim() || "deepseek/deepseek-v4.1-flash-1017",
   runtimeProfiles: profiles,
   port: integer("PORT", 3100, 1, 65535),
   pollIntervalMs: integer("POLL_INTERVAL_MS", 30_000, 10_000, 600_000),

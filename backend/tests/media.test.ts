@@ -35,6 +35,7 @@ describe("translation document validation", () => {
       .toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     expect(validateJobDocument(Buffer.from("# Bonjour"), "text/markdown")).toBe("text/markdown");
     expect(validateJobDocument(Buffer.from("你好"), "text/plain")).toBe("text/plain");
+    expect(validateJobDocument(Buffer.from("name,value\nAda,1\n"), "text/csv")).toBe("text/csv");
   });
 
   test("rejects mismatched, binary, empty, and oversized source documents", () => {

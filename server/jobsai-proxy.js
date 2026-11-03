@@ -12,7 +12,7 @@ const IMAGE_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "i
 const MAX_SPEECH_AUDIO_BYTES = 4 * 1024 * 1024;
 const MAX_JOB_SOURCE_BYTES = 12 * 1024 * 1024;
 const SPEECH_CONTENT_TYPES = new Set(["audio/ogg", "audio/webm"]);
-const DOCUMENT_CONTENT_TYPES = new Set(["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/markdown", "text/plain"]);
+const DOCUMENT_CONTENT_TYPES = new Set(["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/markdown", "text/plain", "text/csv"]);
 
 function json(status, code, message) {
   return Response.json({ error: { code, message } }, {

@@ -16,8 +16,8 @@ export const createJobInputSchema = z.object({
   sourceFileRequired: z.boolean().default(false),
   inviteWallet: z.string().regex(/^0x[0-9a-fA-F]{40}$/, "Enter the worker's 0x wallet address.").transform((value) => value.toLowerCase()).optional(),
   inviteMessage: z.string().trim().min(1).max(1_000).optional(),
-}).refine((input) => !input.sourceFileRequired || input.category === "translation", {
-  message: "Source document uploads are available for translation jobs.", path: ["sourceFileRequired"],
+}).refine((input) => !input.sourceFileRequired || input.category === "translation" || input.category === "data", {
+  message: "Source file uploads are available for translation and data jobs.", path: ["sourceFileRequired"],
 });
 
 export const submissionInputSchema = z.object({

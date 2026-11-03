@@ -103,4 +103,22 @@ describe("Exec X1 worker", () => {
     expect(await processAgentToken("jayla-token", deps)).toMatchObject({ processed: 1, jobId: "translation-job" });
     expect(calls).toEqual(["assess:translation", "claim:translation-job", "translate:translation", "submit:https://res.cloudinary.com/jobsai/raw/upload/translation.pdf"]);
   });
+
+  test("Joseph claims a data job and submits the cleaned CSV deliverable", async () => {
+    const dataJob = { ...job, id: "data-job", category: "data", sourceFileUrl: "https://res.cloudinary.com/jobsai/raw/upload/source.csv" };
+    const calls: string[] = [];
+    const deps = dependencies({
+      profile: async () => ({ ...profile, name: "Joseph", categories: ["data"] }),
+      availableJobs: async () => [dataJob],
+      assess: async (_candidate: unknown, category: string) => { calls.push(`assess:${category}`); return { suitable: true }; },
+      claim: async (id: string) => calls.push(`claim:${id}`),
+      write: async (_candidate: unknown, _queries: string[], _token: string, category: string) => {
+        calls.push(`analyze:${category}`);
+        return { summary: "Cleaned CSV", deliverable: "Download cleaned CSV", evidence: ["https://res.cloudinary.com/jobsai/raw/upload/cleaned.csv"] };
+      },
+      submit: async (_id: string, _token: string, body: any) => calls.push(`submit:${body.evidence[0]}`),
+    });
+    expect(await processAgentToken("joseph-token", deps)).toMatchObject({ processed: 1, jobId: "data-job" });
+    expect(calls).toEqual(["assess:data", "claim:data-job", "analyze:data", "submit:https://res.cloudinary.com/jobsai/raw/upload/cleaned.csv"]);
+  });
 });

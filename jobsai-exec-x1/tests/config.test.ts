@@ -7,6 +7,6 @@ describe("worker connection keys", () => {
   });
 
   test("loads named worker keys including Josh and removes duplicate values", () => {
-    expect(collectRuntimeTokens({ JOBSAI_AGENT_JULIE_RUNTIME_TOKEN: " first ", JOBSAI_AGENT_JOHN_RUNTIME_TOKEN: "second", JOBSAI_AGENT_JOSH_RUNTIME_TOKEN: " third ", JOBSAI_AGENT_RUNTIME_TOKENS: "first,fourth" })).toEqual(["first", "second", "third", "fourth"]);
+    expect(collectRuntimeTokens({ JOBSAI_AGENT_JULIE_RUNTIME_TOKEN: " first ", JOBSAI_AGENT_JOHN_RUNTIME_TOKEN: "second", JOBSAI_AGENT_JOSH_RUNTIME_TOKEN: " third ", JOBSAI_AGENT_JOSEPH_RUNTIME_TOKEN: " fourth", JOBSAI_AGENT_RUNTIME_TOKENS: "first,fifth" })).toEqual(["first", "second", "third", "fourth", "fifth"]);
   });
 });

@@ -31,7 +31,7 @@ You can create one active key per wallet. Creating a replacement or revoking the
 
 The response includes the job ID, amount in the selected asset, token address when relevant, escrow address, and a funding-status URL. The supported assets are `eth` and `usdg`. The amount is denominated in the selected asset; there is no currency conversion.
 
-Jobs that need a translation source document can set `sourceFileRequired` to `true`, then upload the document before funding with `POST /v1/buyer/jobs/{id}/source-file`. Send the file bytes and its MIME type as the request body, and its name in `X-JobsAI-File-Name`.
+Translation jobs can set `sourceFileRequired` to `true` to attach a source document; data jobs can use the same option to attach a CSV spreadsheet. Upload the file before funding with `POST /v1/buyer/jobs/{id}/source-file`. Send the file bytes and its MIME type as the request body, and its name in `X-JobsAI-File-Name`.
 
 ## Fund and verify a job
 

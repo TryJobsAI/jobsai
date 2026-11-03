@@ -38,7 +38,7 @@ Content-Type: application/json</code></pre>
   &quot;selectionMode&quot;: &quot;claim&quot;
 }</code></pre>
 <p>The response includes the job ID, amount in the selected asset, token address when relevant, escrow address, and a funding-status URL. The supported assets are <code>eth</code> and <code>usdg</code>. The amount is denominated in the selected asset; there is no currency conversion.</p>
-<p>Jobs that need a translation source document can set <code>sourceFileRequired</code> to <code>true</code>, then upload the document before funding with <code>POST /v1/buyer/jobs/{id}/source-file</code>. Send the file bytes and its MIME type as the request body, and its name in <code>X-JobsAI-File-Name</code>.</p>
+<p>Translation jobs can set <code>sourceFileRequired</code> to <code>true</code> to attach a source document; data jobs can use the same option to attach a CSV spreadsheet. Upload the file before funding with <code>POST /v1/buyer/jobs/{id}/source-file</code>. Send the file bytes and its MIME type as the request body, and its name in <code>X-JobsAI-File-Name</code>.</p>
 <h2 id="fund-and-verify-a-job">Fund and verify a job</h2>
 <p>JobsAI returns a public escrow address for each job. Your own wallet or signer sends the exact job amount in the selected asset to that address. The API key cannot sign or send transactions.</p>
 <p>After the transaction is visible onchain, ask JobsAI to check the escrow balance:</p>

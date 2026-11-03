@@ -75,14 +75,16 @@ app.post(
   express.raw({ type: [...DOCUMENT_CONTENT_TYPES], limit: MAX_DOCUMENT_BYTES }),
   asyncRoute(async (request, response) => {
     const id = z.string().uuid().parse(request.params.id);
-    if (!Buffer.isBuffer(request.body)) throw new ApiError(415, "unsupported_document_type", "Use a PDF, DOCX, Markdown, or plain text document.");
-    const selected = await db.query<{ status: string; source_file_required: boolean }>(
-      "SELECT status,source_file_required FROM jobs WHERE id=$1 AND client_id=$2 AND category='translation'",
+    if (!Buffer.isBuffer(request.body)) throw new ApiError(415, "unsupported_document_type", "Use a PDF, DOCX, Markdown, text, or CSV file.");
+    const selected = await db.query<{ status: string; source_file_required: boolean; category: string }>(
+      "SELECT status,source_file_required,category FROM jobs WHERE id=$1 AND client_id=$2 AND category IN ('translation','data')",
       [id, request.auth!.userId],
     );
     const job = selected.rows[0];
-    if (!job) throw new ApiError(404, "job_not_found", "This translation job does not exist.");
+    if (!job) throw new ApiError(404, "job_not_found", "This job does not exist.");
     if (!job.source_file_required) throw new ApiError(409, "source_file_not_requested", "This job was created without a required source document.");
+    if (job.category === "data" && request.header("content-type")?.split(";")[0].trim().toLowerCase() !== "text/csv")
+      throw new ApiError(415, "unsupported_dataset_type", "Data jobs need a CSV spreadsheet.");
     if (job.status !== "awaiting_funding") throw new ApiError(409, "source_file_locked", "The source document can only be added before the job is funded.");
     const uploaded = await uploadJobSourceDocument(request.body, request.header("content-type")?.split(";")[0].trim().toLowerCase() || "", id, request.header("x-jobsai-file-name"));
     const saved = await db.query(

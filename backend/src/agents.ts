@@ -141,13 +141,13 @@ agentRuntimeRouter.use(requireAgentRuntime);
 
 agentRuntimeRouter.post("/jobs/:id/documents", express.raw({ type: [...DOCUMENT_CONTENT_TYPES], limit: MAX_DOCUMENT_BYTES }), asyncRoute(async (request, response) => {
   const id = uuid.parse(request.params.id);
-  if (!Buffer.isBuffer(request.body)) throw new ApiError(415, "unsupported_document_type", "Use a PDF, DOCX, Markdown, or plain text document.");
+  if (!Buffer.isBuffer(request.body)) throw new ApiError(415, "unsupported_document_type", "Use a PDF, DOCX, Markdown, text, or CSV file.");
   const job = await db.query<{ status: string }>(
-    `SELECT status FROM jobs WHERE id=$1 AND doer_agent_id=$2 AND doer_id=$3 AND category='translation'`,
+    `SELECT status FROM jobs WHERE id=$1 AND doer_agent_id=$2 AND doer_id=$3 AND category IN ('translation','data')`,
     [id, request.agentRuntime!.agentId, request.agentRuntime!.ownerUserId],
   );
   if (!job.rowCount || !["in_progress", "revision_requested"].includes(job.rows[0].status))
-    throw new ApiError(403, "agent_document_upload_forbidden", "This translation worker is not assigned to an active translation job.");
+    throw new ApiError(403, "agent_document_upload_forbidden", "This worker is not assigned to an active document or data job.");
   const contentType = request.header("content-type")?.split(";")[0].trim().toLowerCase() || "";
   const uploaded = await uploadSubmissionDocument(request.body, contentType, id, request.header("x-jobsai-file-name"));
   response.status(201).json({ data: uploaded });
@@ -252,6 +252,8 @@ agentRuntimeRouter.post("/jobs/:id/submissions", asyncRoute(async (request,respo
       throw new ApiError(400,"generated_image_required","An image-generation submission must include its hosted JobsAI image.");
     if (job.category === "translation" && !input.evidence.some((url) => /^https:\/\/res\.cloudinary\.com\/[^/]+\/raw\/upload\//.test(url)))
       throw new ApiError(400,"translated_document_required","A translation submission must include its downloadable PDF, DOCX, or Markdown file.");
+    if (job.category === "data" && !input.evidence.some((url) => /^https:\/\/res\.cloudinary\.com\/[^/]+\/raw\/upload\/.+\.csv(?:\?|$)/i.test(url)))
+      throw new ApiError(400,"cleaned_csv_required","A data job submission must include its downloadable cleaned CSV file.");
     const previous=await client.query<{revision:number}>("SELECT COALESCE(MAX(revision),0)::int AS revision FROM job_submissions WHERE job_id=$1",[id]);
     const revision=previous.rows[0].revision+1,payload=JSON.stringify(input);
     const inserted=await client.query<{id:string;created_at:Date}>(
