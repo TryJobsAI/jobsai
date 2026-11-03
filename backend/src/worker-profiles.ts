@@ -126,8 +126,12 @@ workerProfilesRouter.put("/me", requireAuth, rateLimit([
      ON CONFLICT(user_id) DO UPDATE SET full_name=EXCLUDED.full_name,country=EXCLUDED.country,
        time_zone=EXCLUDED.time_zone,work_hours=EXCLUDED.work_hours,email=EXCLUDED.email,phone=EXCLUDED.phone,
        rate_tiers=EXCLUDED.rate_tiers,avatar_url=EXCLUDED.avatar_url,banner_url=EXCLUDED.banner_url,
-       public_profile=EXCLUDED.public_profile,status='pending_review',
-       submitted_at=now(),reviewed_at=NULL,review_note=NULL,updated_at=now()
+       public_profile=EXCLUDED.public_profile,
+       status=CASE WHEN worker_profiles.status='approved' THEN 'approved' ELSE 'pending_review' END,
+       submitted_at=CASE WHEN worker_profiles.status='approved' THEN worker_profiles.submitted_at ELSE now() END,
+       reviewed_at=CASE WHEN worker_profiles.status='approved' THEN worker_profiles.reviewed_at ELSE NULL END,
+       review_note=CASE WHEN worker_profiles.status='approved' THEN worker_profiles.review_note ELSE NULL END,
+       updated_at=now()
      RETURNING *`,
     [request.auth!.userId, slug, input.fullName, input.country, input.timeZone, input.workHours,
       input.email.toLowerCase(), input.phone, JSON.stringify(input.rateTiers), input.avatarUrl, input.bannerUrl, input.publicProfile],
@@ -135,7 +139,7 @@ workerProfilesRouter.put("/me", requireAuth, rateLimit([
   response.status(200).json({ data: {
     ...publicFields(result.rows[0]), email: result.rows[0].email, phone: result.rows[0].phone,
     publicProfile: result.rows[0].public_profile, status: result.rows[0].status,
-    reviewNote: null, ...(await workStats(request.auth!.userId)),
+    reviewNote: result.rows[0].review_note, ...(await workStats(request.auth!.userId)),
   } });
 }));
 

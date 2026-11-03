@@ -1154,18 +1154,21 @@ function WorkerProfilePanel({ session }) {
     try {
       const response = await JobsAIAPI.uploadWorkerProfileImage(file, kind, session.token);
       change(kind === 'avatar' ? 'avatarUrl' : 'bannerUrl', response.data.url);
-      setFeedback({ title: `${kind === 'avatar' ? 'Profile photo' : 'Banner photo'} uploaded`, message: 'Submit your profile to save the changes and send it for review.', kind: 'success' });
+      setFeedback({ title: `${kind === 'avatar' ? 'Profile photo' : 'Banner photo'} uploaded`, message: profile?.status === 'approved' ? 'Select Update profile to save this change. It will appear on your public profile immediately.' : 'Submit your first profile for review to save this image with your application.', kind: 'success' });
     } catch (error) { setFeedback({ title: `Could not upload ${label}`, message: error.message || 'JobsAI could not save this image.', kind: 'error' }); }
     finally { setBusy(false); }
   }
   async function save(event) {
     event.preventDefault();
-    setBusy(true); setFeedback({ title: 'Sending your profile for review', message: 'Saving your details and adding your application to the JobsAI review queue…', kind: 'loading' });
+    const approvedUpdate = profile?.status === 'approved';
+    setBusy(true); setFeedback({ title: approvedUpdate ? 'Updating your profile' : 'Sending your profile for review', message: approvedUpdate ? 'Saving your changes to your public profile…' : 'Saving your details and adding your first profile application to the JobsAI review queue…', kind: 'loading' });
     try {
       const response = await JobsAIAPI.submitWorkerProfile(form, session.token);
       setProfile(response.data);
       document.dispatchEvent(new Event('jobsai:work-updated'));
-      setFeedback({ title: 'Profile sent for review', message: 'Your profile is private while the JobsAI team reviews it. We’ll show its public page and blue badge after approval.', kind: 'success' });
+      setFeedback(approvedUpdate
+        ? { title: 'Profile updated', message: 'Your changes are live on your public profile.', kind: 'success' }
+        : { title: 'Profile sent for review', message: 'Your profile is private while the JobsAI team reviews your first submission. It will be published with a blue badge after approval.', kind: 'success' });
     } catch (error) { setFeedback({ title: 'Profile could not be submitted', message: error.message || 'JobsAI could not save your profile.', kind: 'error' }); }
     finally { setBusy(false); }
   }
@@ -1188,7 +1191,7 @@ function WorkerProfilePanel({ session }) {
       <section className="worker-history"><h3>Completed work</h3>{profile.completedJobHistory?.length ? <ul>{profile.completedJobHistory.map(job => <li key={job.id}><strong>{job.title}</strong><span>{job.category.replaceAll('_', ' ')} · {job.completedAt ? new Date(job.completedAt).toLocaleDateString() : 'Completed'}</span></li>)}</ul> : <p>Completed jobs will appear here after payment is settled.</p>}</section>
     </>}
     <form className="create-job-form worker-profile-form" onSubmit={save}>
-      <div className="create-job-form-heading"><span className="eyebrow">PROFILE DETAILS</span><h3>{profile ? 'Update your profile' : 'Set up your worker profile'}</h3><p>Submitting changes sends the profile back to the JobsAI team for review.</p></div>
+      <div className="create-job-form-heading"><span className="eyebrow">PROFILE DETAILS</span><h3>{profile ? 'Update your profile' : 'Set up your worker profile'}</h3><p>{profile?.status === 'approved' ? 'Updates to an approved profile appear immediately. The JobsAI team reviews your first submission only.' : profile ? 'You can update your details while your first profile review is pending.' : 'The JobsAI team reviews your first profile submission before it is published.'}</p></div>
       <section className="worker-profile-media-editor" aria-label="Profile photos">
         <div className="worker-profile-media-preview">
           {form.bannerUrl && <img className="worker-profile-banner-image" src={form.bannerUrl} alt="" />}
@@ -1207,7 +1210,7 @@ function WorkerProfilePanel({ session }) {
       <div className="create-job-payment-row"><label>Email for JobsAI review<input required type="email" maxLength="254" autoComplete="email" value={form.email} onChange={event => change('email', event.target.value)} /></label><label>Phone for JobsAI review<input required type="tel" maxLength="40" autoComplete="tel" value={form.phone} onChange={event => change('phone', event.target.value)} /></label></div>
       <fieldset className="worker-rate-tiers"><legend>Rate tiers</legend>{form.rateTiers.map((tier, index) => <div className="worker-rate-tier" key={index}><div className="create-job-payment-row"><label>Tier name<input required maxLength="50" placeholder="Standard" value={tier.name} onChange={event => changeTier(index, 'name', event.target.value)} /></label><label>Rate amount<input required inputMode="decimal" maxLength="30" placeholder="15" value={tier.amount} onChange={event => changeTier(index, 'amount', event.target.value)} /></label></div><label>What this tier covers<textarea required maxLength="500" rows="2" value={tier.scope} onChange={event => changeTier(index, 'scope', event.target.value)} /></label><label>Payment asset<select value={tier.asset} onChange={event => changeTier(index, 'asset', event.target.value)}><option value="usdg">USDG</option><option value="eth">ETH</option></select></label>{form.rateTiers.length > 1 && <button type="button" className="text-info-button" onClick={() => setForm(current => ({ ...current, rateTiers: current.rateTiers.filter((_, i) => i !== index) }))}>Remove tier</button>}</div>)}{form.rateTiers.length < 8 && <button type="button" className="pill outline" onClick={() => setForm(current => ({ ...current, rateTiers: [...current.rateTiers, blankTier()] }))}>Add a rate tier</button>}</fieldset>
       <label className="worker-public-toggle"><input type="checkbox" checked={form.publicProfile} onChange={event => change('publicProfile', event.target.checked)} /><span>Publish my profile and completed job history after JobsAI approves it</span></label>
-      <button className="pill primary" type="submit" disabled={busy}>{busy ? 'Saving…' : profile?.status === 'approved' ? 'Send updates for review' : profile ? 'Resubmit for review' : 'Submit profile for review'}</button>
+      <button className="pill primary" type="submit" disabled={busy}>{busy ? 'Saving…' : profile ? 'Update profile' : 'Submit profile for review'}</button>
     </form>
     <ServicesPanel session={session} view="offers" />
     {feedback && <div className="workspace-overlay"><section className={`workspace-modal ${feedback.kind}`} role="dialog" aria-modal="true" aria-labelledby="worker-profile-feedback-title"><span className="workspace-modal-symbol" aria-hidden="true">{feedback.kind === 'loading' ? <i /> : feedback.kind === 'success' ? '✓' : feedback.kind === 'info' ? 'i' : '!'}</span><h2 id="worker-profile-feedback-title">{feedback.title}</h2><p>{feedback.message}</p>{feedback.kind !== 'loading' && <button className="pill primary" onClick={() => setFeedback(null)}>Got it</button>}</section></div>}

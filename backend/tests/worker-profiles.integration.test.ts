@@ -4,7 +4,7 @@ import { expect, test } from "bun:test";
 const enabled = process.env.JOBSAI_DB_INTEGRATION === "1";
 const dbTest = enabled ? test : test.skip;
 
-dbTest("worker profiles require review, publish safely, expose completed work metrics, and invalidate approval on edits", async () => {
+dbTest("worker profiles require initial review, publish safely, expose completed work metrics, and preserve approval on edits", async () => {
   const databaseUrl = new URL(process.env.DATABASE_URL!);
   if (!databaseUrl.pathname.toLowerCase().includes("test")) throw new Error("Worker profile integration test needs a disposable database with 'test' in its name.");
   const [{ app }, { db }, { migrate }, { hashSessionToken }] = await Promise.all([
@@ -117,9 +117,10 @@ dbTest("worker profiles require review, publish safely, expose completed work me
     expect(publicProfile.body.data).not.toHaveProperty("phone");
 
     const edited = await call("/v1/workers/me", { token: workerToken, method: "PUT", body: { ...application, country: "Kenya" } });
-    expect(edited.body.data.status).toBe("pending_review");
-    expect((await call(`/v1/workers/${profile.slug}`)).status).toBe(404);
-    expect((await call(`/v1/admin/worker-applications/${profile.id}/review`, { token: workerToken, cookie: refreshedCookie, method: "POST", body: { decision: "approved" } })).status).toBe(200);
+    expect(edited.body.data.status).toBe("approved");
+    expect((await call(`/v1/workers/${profile.slug}`)).body.data).toMatchObject({ country: "Kenya", verified: true });
+    const reviewsAfterEdit = await db.query<{ count: string }>("SELECT count(*) FROM worker_profile_reviews WHERE profile_id=$1", [profile.id]);
+    expect(reviewsAfterEdit.rows[0].count).toBe("2");
   } finally {
     server.close();
     await db.query("DELETE FROM worker_profile_reviews WHERE profile_id IN (SELECT id FROM worker_profiles WHERE user_id=$1)", [workerId]);
