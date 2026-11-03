@@ -1203,6 +1203,98 @@ function BuyerApiSettings({ session }) {
   </section>;
 }
 
+const webhookEventLabels = {
+  'job.created': 'Job created', 'job.funded': 'Job funded', 'job.assigned': 'Worker assigned', 'job.released': 'Worker released',
+  'job.submitted': 'Work submitted', 'job.revision_requested': 'Revision requested', 'job.accepted': 'Work accepted', 'job.disputed': 'Dispute opened',
+  'job.dispute_resolved': 'Dispute resolved', 'job.cancelled': 'Job cancelled', 'job.paid': 'Worker paid', 'job.refunded': 'Client refunded',
+  'proposal.received': 'Proposal received', 'proposal.accepted': 'Proposal chosen', 'invitation.received': 'Invitation received',
+  'invitation.accepted': 'Invitation accepted', 'invitation.declined': 'Invitation declined',
+};
+const webhookVerifySnippet = `import { createHmac, timingSafeEqual } from 'node:crypto';
+
+// rawBody: the exact request body string, before JSON parsing
+export function verifyJobsAI(rawBody, header, secret) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map(part => part.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > 300) return false;
+  const expected = createHmac('sha256', secret).update(\`\${t}.\${rawBody}\`).digest('hex');
+  return v1?.length === expected.length && timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
+}`;
+
+function WebhookSettings({ session }) {
+  const [endpoints, setEndpoints] = useState([]);
+  const [eventTypes, setEventTypes] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ url: '', description: '', allEvents: true, events: [] });
+  const [deliveries, setDeliveries] = useState({});
+  const [modal, setModal] = useState(null);
+
+  async function load() {
+    try {
+      const response = await JobsAIAPI.webhooks(session.token);
+      setEndpoints(response.data || []); setEventTypes(response.eventTypes || []);
+    } catch (error) { setModal({ title: 'Could not load webhooks', message: error.message || 'JobsAI could not load your webhook endpoints.', kind: 'error' }); }
+    finally { setLoaded(true); }
+  }
+  useEffect(() => { load(); }, [session.token]);
+
+  async function act(action, success) {
+    setBusy(true);
+    try { const result = await action(); await load(); if (success) setModal(success(result)); }
+    catch (error) { setModal({ title: 'Webhook action failed', message: error.message || 'JobsAI could not update this webhook.', kind: 'error' }); }
+    finally { setBusy(false); }
+  }
+  const secretModal = (title, secret) => ({ title, message: 'Copy this signing secret now. It will not be shown again. Use it to verify the JobsAI-Signature header on every request.', kind: 'key', secret });
+
+  function create(event) {
+    event.preventDefault();
+    if (!form.allEvents && !form.events.length) { setModal({ title: 'Choose at least one event', message: 'Pick the events this endpoint should receive, or choose All events.', kind: 'error' }); return; }
+    void act(() => JobsAIAPI.createWebhook({ url: form.url.trim(), ...(form.description.trim() ? { description: form.description.trim() } : {}), events: form.allEvents ? [] : form.events }, session.token), response => {
+      setShowForm(false); setForm({ url: '', description: '', allEvents: true, events: [] });
+      return secretModal('Webhook endpoint added', response.data.secret);
+    });
+  }
+  async function sendTest(endpoint) {
+    await act(() => JobsAIAPI.testWebhook(endpoint.id, session.token), response => response.data.status === 'delivered'
+      ? { title: 'Test event delivered', message: `Your endpoint responded with HTTP ${response.data.responseStatus}. Real job events will arrive the same way.`, kind: 'success' }
+      : { title: 'Test event not delivered', message: `${response.data.error || 'The endpoint did not accept the event.'} JobsAI retries automatically with backoff.`, kind: 'error' });
+    if (deliveries[endpoint.id]) void toggleDeliveries(endpoint, true);
+  }
+  async function toggleDeliveries(endpoint, forceOpen = false) {
+    if (deliveries[endpoint.id] && !forceOpen) { setDeliveries(current => { const next = { ...current }; delete next[endpoint.id]; return next; }); return; }
+    try { const response = await JobsAIAPI.webhookDeliveries(endpoint.id, session.token); setDeliveries(current => ({ ...current, [endpoint.id]: response.data || [] })); }
+    catch (error) { setModal({ title: 'Could not load deliveries', message: error.message || 'JobsAI could not load recent deliveries.', kind: 'error' }); }
+  }
+  async function copySecret() {
+    try { await navigator.clipboard.writeText(modal.secret); setModal({ title: 'Signing secret copied', message: 'Store it in your server environment. JobsAI will not show it again.', kind: 'success' }); }
+    catch { setModal({ ...modal, title: 'Copy the signing secret' }); }
+  }
+
+  if (!loaded) return <section className="buyer-api-settings" aria-busy="true"><div className="worker-profile-loading" /></section>;
+  return <section className="buyer-api-settings webhook-settings" aria-labelledby="webhook-settings-title">
+    <article className="created-jobs-card"><div className="created-jobs-heading"><div><span className="eyebrow">SETTINGS</span><h2 id="webhook-settings-title">Webhooks</h2><p>Get a signed HTTPS request the moment something happens on your jobs: a worker is assigned, work is submitted, a proposal arrives, or a payout lands. Works for clients and for AI worker owners.</p></div>{endpoints.length < 5 && <button className="pill primary" onClick={() => setShowForm(value => !value)} disabled={busy}>{showForm ? 'Close' : 'Add endpoint'}</button>}</div>
+      {showForm && <form className="webhook-form" onSubmit={create}>
+        <label>Endpoint URL<input required type="url" inputMode="url" pattern="https://.+" placeholder="https://your-server.com/jobsai/webhook" value={form.url} onChange={event => setForm({ ...form, url: event.target.value })} /></label>
+        <label>Label <small>Optional</small><input maxLength="120" placeholder="Ops alerts" value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} /></label>
+        <fieldset><legend>Events</legend><label className="webhook-check"><input type="checkbox" checked={form.allEvents} onChange={event => setForm({ ...form, allEvents: event.target.checked })} />All events, including ones added later</label>
+          {!form.allEvents && <div className="webhook-event-grid">{eventTypes.map(type => <label className="webhook-check" key={type}><input type="checkbox" checked={form.events.includes(type)} onChange={event => setForm({ ...form, events: event.target.checked ? [...form.events, type] : form.events.filter(item => item !== type) })} /><span>{webhookEventLabels[type] || type}<code>{type}</code></span></label>)}</div>}</fieldset>
+        <button className="pill primary" type="submit" disabled={busy}>Add endpoint</button>
+      </form>}
+      {!endpoints.length && !showForm && <p className="created-jobs-empty">No endpoints yet. Add one to receive job events on your server.</p>}
+      <div className="webhook-list">{endpoints.map(endpoint => <article className="webhook-endpoint" key={endpoint.id}>
+        <div className="webhook-endpoint-top"><div><code>{endpoint.url}</code>{endpoint.description && <small>{endpoint.description}</small>}</div><span className={`webhook-state ${endpoint.active ? 'on' : ''}`}>{endpoint.active ? 'Active' : 'Paused'}</span></div>
+        <p>{endpoint.allEvents ? 'All events' : endpoint.events.map(type => webhookEventLabels[type] || type).join(' · ')}</p>
+        <small>{endpoint.deliveredCount} delivered · {endpoint.failedCount} failed{endpoint.lastDeliveryAt ? ` · last event ${new Date(endpoint.lastDeliveryAt).toLocaleString()}` : ''}</small>
+        <div className="buyer-api-actions"><button className="pill primary" onClick={() => sendTest(endpoint)} disabled={busy}>Send test event</button><button className="pill outline" onClick={() => toggleDeliveries(endpoint)}>{deliveries[endpoint.id] ? 'Hide deliveries' : 'Recent deliveries'}</button><button className="pill outline" onClick={() => act(() => JobsAIAPI.updateWebhook(endpoint.id, { active: !endpoint.active }, session.token))} disabled={busy}>{endpoint.active ? 'Pause' : 'Resume'}</button><button className="pill outline" onClick={() => act(() => JobsAIAPI.rotateWebhookSecret(endpoint.id, session.token), response => secretModal('New signing secret', response.data.secret))} disabled={busy}>Rotate secret</button><button className="pill outline" onClick={() => window.confirm('Delete this endpoint and its delivery history?') && act(() => JobsAIAPI.deleteWebhook(endpoint.id, session.token))} disabled={busy}>Delete</button></div>
+        {deliveries[endpoint.id] && <ul className="webhook-deliveries">{deliveries[endpoint.id].length ? deliveries[endpoint.id].map(item => <li key={item.id} className={`webhook-delivery-${item.status}`}><b>{webhookEventLabels[item.eventType] || (item.eventType === 'webhook.test' ? 'Test event' : item.eventType)}</b><span>{item.status === 'delivered' ? `Delivered · HTTP ${item.responseStatus}` : item.status === 'failed' ? `Failed after ${item.attempts} attempts` : item.attempts ? `Retrying · ${item.error || ''}` : 'Queued'}</span><time>{new Date(item.createdAt).toLocaleString()}</time></li>) : <li>No deliveries yet.</li>}</ul>}
+      </article>)}</div>
+      <details className="webhook-verify"><summary>Verify signatures on your server</summary><p>Each request has <code>JobsAI-Signature: t=…,v1=…</code>, an HMAC-SHA256 of <code>t.body</code> with your signing secret, plus <code>JobsAI-Event-Id</code> for de-duplication. Respond with any 2xx within 10 seconds. Failed deliveries are retried up to 6 times over about 7 hours. <a href="/guides/webhooks.html" target="_blank" rel="noreferrer">Webhook guide ↗</a></p><pre><code>{webhookVerifySnippet}</code></pre></details>
+    </article>
+    {modal && <div className="workspace-overlay"><section className={`workspace-modal ${modal.kind === 'key' ? 'info' : modal.kind}`} role="dialog" aria-modal="true" aria-labelledby="webhook-modal-title"><span className="workspace-modal-symbol" aria-hidden="true">{modal.kind === 'success' ? '✓' : modal.kind === 'key' ? '⚿' : '!'}</span><h2 id="webhook-modal-title">{modal.title}</h2><p>{modal.message}</p>{modal.secret && <code className="buyer-api-revealed-key">{modal.secret}</code>}<div className="workflow-dialog-actions">{modal.secret && <button className="pill primary" onClick={copySecret}>Copy secret</button>}<button className={modal.secret ? 'pill outline' : 'pill primary'} onClick={() => setModal(null)}>{modal.secret ? 'I saved it' : 'Got it'}</button></div></section></div>}
+  </section>;
+}
+
 function ProfileWorkspace({ session, userTag }) {
   const [section, setSection] = useState('worker');
   return <section className="profile-workspace">
@@ -1303,7 +1395,7 @@ function WorkspaceContext() {
     {createPortal(<AgentManagement session={session} />, agentsRoot)}
     {createPortal(<ServicesPanel session={session} view="catalog" />, servicesCatalogRoot)}
     {createPortal(<ProfileWorkspace session={session} userTag={identity.userTag} />, profileRoot)}
-    {createPortal(<BuyerApiSettings session={session} />, buyerApiSettingsRoot)}
+    {createPortal(<><BuyerApiSettings session={session} /><WebhookSettings session={session} /></>, buyerApiSettingsRoot)}
     {isAdmin && createPortal(<a href="/admin" data-admin-nav><span>⚙</span> Admin</a>, adminNavRoot)}
     {createPortal(<UserTagSetup session={session} identity={identity} onSet={userTag => setIdentity({ status: 'ready', userTag })} onRetry={() => setIdentityRetry(value => value + 1)} />, document.body)}
   </>;

@@ -44,6 +44,14 @@
       "destination": "https://jobsai-api.onrender.com/v1/services/:path*"
     },
     {
+      "source": "/api/jobsai/v1/webhooks",
+      "destination": "https://jobsai-api.onrender.com/v1/webhooks"
+    },
+    {
+      "source": "/api/jobsai/v1/webhooks/:path*",
+      "destination": "https://jobsai-api.onrender.com/v1/webhooks/:path*"
+    },
+    {
       "source": "/api/jobsai/v1/workers/:path*",
       "destination": "https://jobsai-api.onrender.com/v1/workers/:path*"
     },

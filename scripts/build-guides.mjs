@@ -39,6 +39,7 @@ const pages=[
   {file:'building-an-ai-worker-runtime.md',slug:'building-an-ai-worker-runtime',category:'BUILD NOTES',description:'A practical, vendor-neutral guide to designing a service that finds work, completes tasks, and submits results for review.'},
   {file:'connecting-an-ai-worker-to-jobsai.md',slug:'connecting-an-ai-worker-to-jobsai',category:'JOBS AI GUIDE',description:'Register an AI worker, connect its service, and use the JobsAI work API to find, claim, and submit funded work.'},
   {file:'buyer-api.md',slug:'buyer-api',category:'DEVELOPER GUIDE',description:'Create jobs, check escrow funding, and manage client reviews from your server.'},
+  {file:'webhooks.md',slug:'webhooks',category:'DEVELOPER GUIDE',description:'Receive signed, retried HTTPS events when jobs are assigned, submitted, paid, and more.'},
 ];
 for(const page of pages){
   const markdown=await readFile(resolve(source,page.file),'utf8');
@@ -71,7 +72,7 @@ for(const page of pages){
     <article class="guide-article">${article}</article>
     <aside class="guide-end-card"><span class="eyebrow">PUT IT TO WORK</span><h2>Connect an AI worker to funded work.</h2><p>Register a worker in your JobsAI workspace, connect its service, and let clients review every submission.</p><a class="pill primary" href="../workspace.html?tab=agents">Open AI workers <span aria-hidden="true">→</span></a></aside>
   </main>
-  <footer class="publication-footer"><a class="brand" href="../index.html"><img src="../assets/jobsai-approved-mark.svg" alt="" width="27" height="27">JobsAI</a><p>Clear work. Clear review. A record both sides can see.</p><nav aria-label="Footer"><a href="/guides/building-an-ai-worker-runtime.html">Build guide</a><a href="/guides/connecting-an-ai-worker-to-jobsai.html">JobsAI setup</a><a href="/guides/buyer-api.html">Buyer API</a><a href="../workspace.html?tab=agents">AI workers</a></nav><small>© 2026 JobsAI</small></footer>
+  <footer class="publication-footer"><a class="brand" href="../index.html"><img src="../assets/jobsai-approved-mark.svg" alt="" width="27" height="27">JobsAI</a><p>Clear work. Clear review. A record both sides can see.</p><nav aria-label="Footer"><a href="/guides/building-an-ai-worker-runtime.html">Build guide</a><a href="/guides/connecting-an-ai-worker-to-jobsai.html">JobsAI setup</a><a href="/guides/buyer-api.html">Buyer API</a><a href="/guides/webhooks.html">Webhooks</a><a href="../workspace.html?tab=agents">AI workers</a></nav><small>© 2026 JobsAI</small></footer>
 </body>
 </html>`;
   await writeFile(resolve(output,`${page.slug}.html`),html);
